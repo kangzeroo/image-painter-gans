@@ -3,12 +3,12 @@ import numpy as np
 import cv2
 import os
 from keras.optimizers import Adadelta
-from keras.layers import Concatenate, Input
+from keras.layers import merge, Input
 from keras.models import Model
-from keras.engine.network import Network
+from keras.engine.topology import Container
 from keras.utils import generic_utils
 import keras.backend as K
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from model import model_generator, model_discriminator
 
 class DataGenerator(object):
@@ -61,11 +61,11 @@ class DataGenerator(object):
                 self.reset()
                 yield inputs, points, masks
 
-def example_gan(result_dir="output", data_dir="https://console.cloud.google.com/storage/browser/lsun-roomsets/images/dining_room_train/images"):
+def example_gan(result_dir="output", data_dir="data"):
     input_shape = (256, 256, 3)
     local_shape = (128, 128, 3)
     batch_size = 4
-    n_epoch = 2
+    n_epoch = 100
     tc = int(n_epoch * 0.18)
     td = int(n_epoch * 0.02)
     alpha = 0.0004
@@ -80,14 +80,14 @@ def example_gan(result_dir="output", data_dir="https://console.cloud.google.com/
     org_img = Input(shape=input_shape)
     mask = Input(shape=(input_shape[0], input_shape[1], 1))
 
-    in_img =  ([org_img, mask],
+    in_img = merge([org_img, mask],
                    mode=lambda x: x[0] * (1 - x[1]),
                    output_shape=input_shape)
     imitation = generator(in_img)
-    completion = Concatenate([imitation, org_img, mask],
+    completion = merge([imitation, org_img, mask],
                        mode=lambda x: x[0] * x[2] + x[1] * (1 - x[2]),
                        output_shape=input_shape)
-    cmp_container = Network([org_img, mask], completion)
+    cmp_container = Container([org_img, mask], completion)
     cmp_out = cmp_container([org_img, mask])
     cmp_model = Model([org_img, mask], cmp_out)
     cmp_model.compile(loss='mse',
@@ -95,18 +95,18 @@ def example_gan(result_dir="output", data_dir="https://console.cloud.google.com/
     cmp_model.summary()
 
     in_pts = Input(shape=(4,), dtype='int32')
-    d_container = Network([org_img, in_pts], discriminator([org_img, in_pts]))
+    d_container = Container([org_img, in_pts], discriminator([org_img, in_pts]))
     d_model = Model([org_img, in_pts], d_container([org_img, in_pts]))
     d_model.compile(loss='binary_crossentropy',
                     optimizer=optimizer)
     d_model.summary()
 
     d_container.trainable = False
-    brain = Model([org_img, mask, in_pts],
+    all_model = Model([org_img, mask, in_pts],
                       [cmp_out, d_container([cmp_out, in_pts])])
-    brain.compile(loss=['mse', 'binary_crossentropy'],
+    all_model.compile(loss=['mse', 'binary_crossentropy'],
                       loss_weights=[1.0, alpha], optimizer=optimizer)
-    brain.summary()
+    all_model.summary()
 
     for n in range(n_epoch):
         progbar = generic_utils.Progbar(len(train_datagen))
@@ -129,20 +129,20 @@ def example_gan(result_dir="output", data_dir="https://console.cloud.google.com/
                     g_loss = g_loss[0] + alpha * g_loss[1]
             progbar.add(inputs.shape[0], values=[("D loss", d_loss), ("G mse", g_loss)])
 
-        # num_img = min(5, batch_size)
-        # fig, axs = plt.subplots(num_img, 3)
-        # for i in range(num_img):
-        #     axs[i, 0].imshow(inputs[i] * (1 - masks[i]))
-        #     axs[i, 0].axis('off')
-        #     axs[i, 0].set_title('Input')
-        #     axs[i, 1].imshow(cmp_image[i])
-        #     axs[i, 1].axis('off')
-        #     axs[i, 1].set_title('Output')
-        #     axs[i, 2].imshow(inputs[i])
-        #     axs[i, 2].axis('off')
-        #     axs[i, 2].set_title('Ground Truth')
-        # fig.savefig(os.path.join(result_dir, "result_%d.png" % n))
-        # plt.close()
+        num_img = min(5, batch_size)
+        fig, axs = plt.subplots(num_img, 3)
+        for i in range(num_img):
+            axs[i, 0].imshow(inputs[i] * (1 - masks[i]))
+            axs[i, 0].axis('off')
+            axs[i, 0].set_title('Input')
+            axs[i, 1].imshow(cmp_image[i])
+            axs[i, 1].axis('off')
+            axs[i, 1].set_title('Output')
+            axs[i, 2].imshow(inputs[i])
+            axs[i, 2].axis('off')
+            axs[i, 2].set_title('Ground Truth')
+        fig.savefig(os.path.join(result_dir, "result_%d.png" % n))
+        plt.close()
     # save model
     generator.save(os.path.join(result_dir, "generator.h5"))
     discriminator.save(os.path.join(result_dir, "discriminator.h5"))

@@ -2,7 +2,7 @@ import numpy as np
 from keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input
 from keras.layers.normalization import BatchNormalization
 from keras.layers.merge import concatenate
-from keras.models import Model
+from keras.models import Sequential, Model
 import keras.backend as K
 import tensorflow as tf
 
@@ -10,85 +10,83 @@ def model_generator(input_shape=(256, 256, 3)):
     """
     Architecture of the image completion network
     """
-    in_layer = Input(shape=input_shape)
+    model = Sequential()
+    model.add(Conv2D(64, kernel_size=5, strides=1, padding='same',
+                     dilation_rate=(1, 1), input_shape=input_shape))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2D(64, kernel_size=5, strides=1, padding='same',
-                     dilation_rate=(1, 1))(in_layer)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
+    model.add(Conv2D(128, kernel_size=3, strides=2,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(128, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2D(128, kernel_size=3, strides=2,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(128, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
+    model.add(Conv2D(256, kernel_size=3, strides=2,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2D(256, kernel_size=3, strides=2,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(2, 2)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(4, 4)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(8, 8)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(16, 16)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(2, 2))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(4, 4))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(8, 8))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(16, 16))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(256, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(256, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
+    model.add(Conv2DTranspose(128, kernel_size=4, strides=2,
+                              padding='same'))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(128, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2DTranspose(128, kernel_size=4, strides=2,
-                              padding='same')(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(128, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
+    model.add(Conv2DTranspose(64, kernel_size=4, strides=2,
+                              padding='same'))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    model.add(Conv2D(32, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
 
-    model = Conv2DTranspose(64, kernel_size=4, strides=2,
-                              padding='same')(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-    model = Conv2D(32, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('relu')(model)
-
-    model = Conv2D(3, kernel_size=3, strides=1,
-                     padding='same', dilation_rate=(1, 1))(model)
-    model = BatchNormalization()(model)
-    model = Activation('sigmoid')(model)
-    model_gen = Model(inputs=in_layer, outputs=model)
-    return model_gen
+    model.add(Conv2D(3, kernel_size=3, strides=1,
+                     padding='same', dilation_rate=(1, 1)))
+    model.add(BatchNormalization())
+    model.add(Activation('sigmoid'))
+    return model
 
 
 def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3)):
@@ -149,21 +147,6 @@ def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3)):
     x = concatenate([x_l, x_g])
     x = Dense(1, activation='sigmoid')(x)
     return Model(inputs=[g_img, in_pts], outputs=x)
-
-def combine_gans(input_shape = (256, 256, 3), local_shape = (128, 128, 3)):
-    # instantiate model parts (gen and discrim)
-    generator = model_generator(input_shape)
-    discriminator = model_discriminator(input_shape, local_shape)
-    optimizer = Adadelta()
-    # build model
-    # define inputs as a concatenation of original image and the mask
-    org_img = Input(shape=input_shape)
-    mask = Input(shape=(input_shape[0], input_shape[1], 1))
-    # combined_img = ??
-    # recall that models are callable with model(input) and get treated like a layer
-    # imitation = generator(combined_img)
-
-
 
 if __name__ == "__main__":
     from keras.utils import plot_model
