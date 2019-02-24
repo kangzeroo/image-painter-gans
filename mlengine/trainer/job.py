@@ -1,4 +1,5 @@
 import numpy as np
+import pdb
 from keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
 from keras.layers.normalization import BatchNormalization
 from keras.layers.merge import Concatenate
@@ -12,6 +13,9 @@ from tensorflow.python.lib.io import file_io
 from trainer.generator import createGenerator
 from trainer.model import getBrains
 
+# Debug in python interactive terminal
+# insert the below line anywhere in your code
+# pdb.set_trace()
 
 # Related to job run
 EPOCHS_PER_SAVED_WEIGHTS = 1
@@ -85,7 +89,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS):
             # train generator for 90k epochs
             if epoch < G_EPOCHS:
                 # set the gen loss
-                g_loss = gen_brain.train_on_batch([images, masks, mask_inv], valid)
+                g_loss = gen_brain.train_on_batch([images, masks, mask_inv], generated_img)
             # train discriminator alone for 90k epochs
             # then train disc + gen for another 400k epochs. Total of 500k
             else:
