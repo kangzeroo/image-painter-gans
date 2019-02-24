@@ -3,3 +3,4 @@ trainer/*
 summaries/*
 outputs/*
 .ipynb_checkpoints/*
+jobs/*

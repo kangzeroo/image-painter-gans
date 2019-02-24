@@ -1,5 +1,11 @@
 # Official ML Engine Version
 
+### Train Locally
+```
+$ JOB_DIR='jobs/'
+$ python -m trainer.task
+```
+
 ### Train on ML Engine
 1. Set job name
 ```

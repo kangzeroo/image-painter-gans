@@ -85,7 +85,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS):
             # train generator for 90k epochs
             if epoch < G_EPOCHS:
                 # set the gen loss
-                g_loss = gen_brain.train_on_batch([images, points], valid)
+                g_loss = gen_brain.train_on_batch([images, points, mask_inv], valid)
             # train discriminator alone for 90k epochs
             # then train disc + gen for another 400k epochs. Total of 500k
             else:
@@ -112,12 +112,13 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS):
     if epoch // EPOCHS_PER_SAVED_WEIGHTS == 0:
 
         if dreamt_image is not None:
-            with file_io.FileIO(f'gs://{BUCKET_NAME}/{JOB_DIR}output_images/epoch_{epoch}_image.png', 'wb') as f:
+            OUTPUT_IMAGE_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_images/epoch_" + epoch + "_image.png"
+            with file_io.FileIO(OUTPUT_IMAGE_PATH, 'wb') as f:
                 dreamt_image.save(f, "PNG")
 
-        GEN_WEIGHTS_LOCAL_PATH = f"output_models/epoch_{epoch}_generator.hdf5"
-        DISC_WEIGHTS_LOCAL_PATH = f"output_models/epoch_{epoch}_discriminator.hdf5"
-        BRAIN_WEIGHTS_LOCAL_PATH = f"output_models/epoch_{epoch}_brain.hdf5"
+        GEN_WEIGHTS_LOCAL_PATH = "output_models/epoch_" + epoch + "_generator.hdf5"
+        DISC_WEIGHTS_LOCAL_PATH = "output_models/epoch_" + epoch + "_discriminator.hdf5"
+        BRAIN_WEIGHTS_LOCAL_PATH = "output_models/epoch_" + epoch + "_brain.hdf5"
 
         gen_brain.save(GEN_WEIGHTS_LOCAL_PATH)
         copy_file_to_gcs(JOB_DIR, GEN_WEIGHTS_LOCAL_PATH)
@@ -132,5 +133,5 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS):
 
 def copy_file_to_gcs(BUCKET_NAME, JOB_DIR, FILE_PATH):
   with file_io.FileIO(FILE_PATH, mode='rb') as input_f:
-    with file_io.FileIO(f"gs://{BUCKET_NAME}/{JOB_DIR}{FILE_PATH}", mode='w+') as output_f:
+    with file_io.FileIO("gs://" + BUCKET_NAME + "/" + JOB_DIR + FILE_PATH, mode='w+') as output_f:
       output_f.write(input_f.read())

@@ -11,7 +11,7 @@ import numpy as np
 class DataGenerator(object):
     # initialize by retreiving the photos
     def __init__(self, BUCKET_NAME, INPUT_DIR, IMAGE_SIZE, LOCAL_SIZE):
-        # BUCKET_NAME = 'gs://lsun-roomsets'
+        # BUCKET_NAME = 'lsun-roomsets'
         # INPUT_DIR = 'images/bedroom_train/'
         # IMAGE_SIZE = (256,256)
         # LOCAL_SIZE = (128,128)
