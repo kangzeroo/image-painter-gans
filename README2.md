@@ -6,6 +6,7 @@ Kangzeroo's Keras 2.2.4 Implementation of the Paper ["Globally and Locally Consi
 
 ## Setup
 0. `conda env create -f environment.yml` and then `source activate MessyRoom` and then `pip install -r requirement.txt`
+or it may be pip install -r requirements.txt --ignore-installed six==1.12.0 , then conda install python-graphviz
 1. you might need to run pip install -r requirements.txt --ignore-installed six==1.12.0, and pip install graphviz
 1. Spin up GCloud VM and SSH into it
 2. Use `lsun_script.sh` to setup VM and download dataset
