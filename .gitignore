@@ -4,3 +4,4 @@ summaries/*
 outputs/*
 .ipynb_checkpoints/*
 jobs/*
+mlengine/output_models/*

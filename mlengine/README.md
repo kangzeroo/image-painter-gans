@@ -11,7 +11,7 @@ $ python -m trainer.task
 ```
 now=$(date +"%Y%m%d_%H%M%S")
 JOB_NAME="ai_maid_test_$now"
-PACKAGE_STAGING_PATH="gs://lsun-roomsets"
+PACKAGE_STAGING_PATH="gs://kangzes_jobs"
 ```
 2. Run job locally
 ```
@@ -30,6 +30,7 @@ $ gcloud ml-engine jobs submit training $JOB_NAME \
                                     --region us-central1 \
                                     --staging-bucket $PACKAGE_STAGING_PATH \
                                     -- \
+                                    --verbosity DEBUG \
 
 ```
 3. View job status or stream logs

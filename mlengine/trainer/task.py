@@ -17,7 +17,7 @@ def initialize_job_settings(args_parser):
             'INFO',
             'WARN'
         ],
-        default='DEBUG',
+        default='INFO',
     )
     return args_parser.parse_args()
 
@@ -91,16 +91,19 @@ def main():
     print('-------')
     print('')
     time_start = datetime.utcnow()
-    print("Training job started at {}".format(time_start.strftime("%H:%M:%S")))
+    TIMESTAMP = time_start.strftime("%H:%M:%S")
+    print("Training job started at {}".format(TIMESTAMP))
     print('')
     print('==============================================')
 
     tf.logging.set_verbosity(JOB_PARAMS.verbosity)
 
+    print('STARTING THE TRAINING JOB')
     run_training_job(
         JOB_PARAMS = JOB_PARAMS,
         FILE_PARAMS = FILE_PARAMS,
-        HYPER_PARAMS = HYPER_PARAMS
+        HYPER_PARAMS = HYPER_PARAMS,
+        TIMESTAMP = TIMESTAMP
     )
 
     print('==============================================')

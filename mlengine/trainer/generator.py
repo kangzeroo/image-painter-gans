@@ -9,7 +9,7 @@ import numpy as np
 # Data generator that will feed in our data batch by batch
 class DataGenerator(object):
     # initialize by retreiving the photos
-    def __init__(self, BUCKET_NAME, INPUT_DIR, IMAGE_SIZE, LOCAL_SIZE):
+    def __init__(self, BUCKET_NAME, INPUT_DIR, IMAGE_SIZE, LOCAL_SIZE, MAX_TRAINING_IMAGES):
         # BUCKET_NAME = 'lsun-roomsets'
         # INPUT_DIR = 'images/bedroom_train/'
         # IMAGE_SIZE = (256,256)
@@ -21,8 +21,12 @@ class DataGenerator(object):
         client = storage.Client()
         bucket = client.bucket(BUCKET_NAME)
         # for now we get max self.count photos and add them to self.img_file_list
+        img_count = 0
         for blob in bucket.list_blobs(prefix=INPUT_DIR):
             self.img_file_list.append(blob.name)
+            img_count += 1
+            if img_count >= MAX_TRAINING_IMAGES:
+                break
 
     def __len__(self):
         return len(self.img_file_list)
@@ -79,10 +83,11 @@ class DataGenerator(object):
                     self.reset()
                     yield images, points, masks
 
-def createGenerator(BUCKET_NAME, INPUT_DIR, IMAGE_SIZE, LOCAL_SIZE):
+def createGenerator(BUCKET_NAME, INPUT_DIR, IMAGE_SIZE, LOCAL_SIZE,MAX_TRAINING_IMAGES):
     return DataGenerator(
         BUCKET_NAME,
         INPUT_DIR,
         IMAGE_SIZE,
-        LOCAL_SIZE
+        LOCAL_SIZE,
+        MAX_TRAINING_IMAGES
     )
