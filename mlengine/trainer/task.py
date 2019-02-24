@@ -1,6 +1,7 @@
 
 import argparse
 from datetime import datetime
+import tensorflow as tf
 
 from trainer.job import run_training_job
 
@@ -16,7 +17,7 @@ def initialize_job_settings(args_parser):
             'INFO',
             'WARN'
         ],
-        default='INFO',
+        default='DEBUG',
     )
     return args_parser.parse_args()
 
@@ -93,6 +94,8 @@ def main():
     print("Training job started at {}".format(time_start.strftime("%H:%M:%S")))
     print('')
     print('==============================================')
+
+    tf.logging.set_verbosity(JOB_PARAMS.verbosity)
 
     run_training_job(
         JOB_PARAMS = JOB_PARAMS,
