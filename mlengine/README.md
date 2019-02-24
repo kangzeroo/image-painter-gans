@@ -2,15 +2,15 @@
 
 ### Train Locally
 ```
-$ JOB_DIR='jobs/'
+$ JOB_DIR='jobs'
 $ python -m trainer.task
 ```
 
 ### Train on ML Engine
 1. Set job name
 ```
-$ JOB_NAME='ai_maid_test_2'
-$ JOB_DIR='gs://lsun-roomsets/jobs/'
+$ JOB_NAME='ai_maid_test_x'
+$ JOB_DIR='gs://lsun-roomsets/jobs'
 ```
 2. Run job
 ```
@@ -21,7 +21,6 @@ $ gcloud ml-engine jobs submit training $JOB_NAME \
                                     --python-version 3.5 \
                                     --runtime-version 1.4 \
                                     --region us-central1 \
-
 
 ```
 3. View job status or stream logs

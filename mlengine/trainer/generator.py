@@ -1,6 +1,5 @@
 from tensorflow.python.lib.io import file_io
 from google.cloud import storage
-import google
 import cv2
 from PIL import Image
 import numpy as np
@@ -39,7 +38,7 @@ class DataGenerator(object):
         np.random.shuffle(self.img_file_list)
         for idx, img_url in enumerate(self.img_file_list):
             # we use tf...file_io.FileIO to grab the file
-            with file_io.FileIO(f'gs://{BUCKET_NAME}/{img_url}', 'rb') as f:
+            with file_io.FileIO("gs://" + BUCKET_NAME + "/" + img_url, 'rb') as f:
                 # and use PIL to convert into an RGB image
                 img = Image.open(f).convert('RGB')
                 # then convert the RGB image to an array so that cv2 can read it

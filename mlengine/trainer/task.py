@@ -40,6 +40,7 @@ def initialise_file_locations(args_parser):
     args_parser.add_argument(
         '--job-dir',
         help='GCS location to write checkpoints and export models',
+        type=str,
         required=False
     )
     # reuse past job dir? deletes old job dir if False
