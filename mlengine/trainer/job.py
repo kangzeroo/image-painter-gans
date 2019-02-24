@@ -85,7 +85,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS):
             # train generator for 90k epochs
             if epoch < G_EPOCHS:
                 # set the gen loss
-                g_loss = gen_brain.train_on_batch([images, points, mask_inv], valid)
+                g_loss = gen_brain.train_on_batch([images, points], valid)
             # train discriminator alone for 90k epochs
             # then train disc + gen for another 400k epochs. Total of 500k
             else:

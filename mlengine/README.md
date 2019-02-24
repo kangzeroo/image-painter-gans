@@ -9,10 +9,9 @@ $ python -m trainer.task
 ### Train on ML Engine
 1. Set job name
 ```
-$ now=$(date +"%Y%m%d_%H%M%S")
-$ JOB_NAME="ai_maid_test_$now"
-$ JOB_DIR='gs://lsun-roomsets/jobs'
-$ PACKAGE_STAGING_PATH="gs://lsun-roomsets/packages"
+now=$(date +"%Y%m%d_%H%M%S")
+JOB_NAME="ai_maid_test_$now"
+PACKAGE_STAGING_PATH="gs://lsun-roomsets"
 ```
 2. Run job locally
 ```
@@ -29,7 +28,6 @@ $ gcloud ml-engine jobs submit training $JOB_NAME \
                                     --python-version 3.5 \
                                     --runtime-version 1.4 \
                                     --region us-central1 \
-                                    --job-dir $JOB_DIR \
                                     --staging-bucket $PACKAGE_STAGING_PATH \
                                     -- \
 
