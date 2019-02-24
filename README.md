@@ -5,7 +5,7 @@ Kangzeroo's Keras 2.2.4 Implementation of the Paper ["Globally and Locally Consi
 ![Results of Original Paper](readme/preview.png)
 
 ## Setup
-0. `conda env create -f environment.yml` and then `conda activate MessyRoom`
+0. `conda env create -f environment.yml` and then `source activate MessyRoom` and then `pip install -r requirement.txt`
 1. Spin up GCloud VM and SSH into it
 2. Use `lsun_script.sh` to setup VM and download dataset
 3. Open `$ ipython notebook` to run through steps making the brain
