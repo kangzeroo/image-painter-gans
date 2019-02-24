@@ -137,18 +137,13 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
                     dreamt_image.save(f, "PNG")
 
             # local testing
-            # GEN_WEIGHTS_LOCAL_PATH = os.getcwd() + "/output_models/epoch_" + str(epoch) + "_generator.h5"
-            # DISC_WEIGHTS_LOCAL_PATH = os.getcwd() + "/output_models/epoch_" + str(epoch) + "_discriminator.h5"
-            # BRAIN_WEIGHTS_LOCAL_PATH = os.getcwd() + "/output_models/epoch_" + str(epoch) + "_brain.h5"
+            GEN_WEIGHTS_LOCAL_PATH = "/output_models/epoch_" + str(epoch) + "_generator.h5"
+            DISC_WEIGHTS_LOCAL_PATH = "/output_models/epoch_" + str(epoch) + "_discriminator.h5"
+            BRAIN_WEIGHTS_LOCAL_PATH = "/output_models/epoch_" + str(epoch) + "_brain.h5"
 
-            # cloud ml engine
-            GEN_WEIGHTS_LOCAL_PATH = "output_models/epoch_" + str(epoch) + "_generator.h5"
-            DISC_WEIGHTS_LOCAL_PATH = "output_models/epoch_" + str(epoch) + "_discriminator.h5"
-            BRAIN_WEIGHTS_LOCAL_PATH = "output_models/epoch_" + str(epoch) + "_brain.h5"
-
-            GEN_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + GEN_WEIGHTS_LOCAL_PATH
-            DISC_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + DISC_WEIGHTS_LOCAL_PATH
-            BRAIN_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + BRAIN_WEIGHTS_LOCAL_PATH
+            GEN_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_generator.h5"
+            DISC_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_discriminator.h5"
+            BRAIN_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_brain.h5"
 
             print('Saving weights to local path ' + GEN_WEIGHTS_LOCAL_PATH)
             gen_brain.save(GEN_WEIGHTS_LOCAL_PATH)
@@ -164,6 +159,29 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
             brain.save(BRAIN_WEIGHTS_LOCAL_PATH)
             print('Copying weights to GCS ' + BRAIN_WEIGHTS_GCS_PATH)
             copy_file_to_gcs(BRAIN_WEIGHTS_LOCAL_PATH, BRAIN_WEIGHTS_GCS_PATH)
+
+            # tf checkpoints
+            # https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore
+
+            # load checkpoints
+            # model_path_glob = 'checkpoint.*'
+            # if not self.job_dir.startswith('gs://'):
+            #     model_path_glob = os.path.join(self.job_dir, model_path_glob)
+            # checkpoints = glob.glob(model_path_glob)
+            # if len(checkpoints) > 0:
+            #     checkpoints.sort()
+            #     brain = load_model(checkpoints[-1])
+
+            # save checkpoints
+            # checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=brain)
+            # checkpoint.write(
+            #     'gs://bucketpath/checkpoints',
+            #     session=None
+            # )
+
+            # save tensorboard stats
+            # https://www.tensorflow.org/api_docs/python/tf/keras/callbacks/TensorBoard#class_tensorboard
+
 
 
 
