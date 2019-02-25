@@ -1,14 +1,10 @@
 import numpy as np
 import pdb
 import os
-from keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
-from keras.layers.normalization import BatchNormalization
-from keras.layers.merge import Concatenate
-from keras.models import Sequential, Model
-from keras.engine.network import Network
-from keras.optimizers import Adadelta
-import keras.backend as K
 import tensorflow as tf
+from tensorflow.keras.layers import Input
+from tensorflow.keras.optimizers import Adadelta
+import tensorflow.keras.backend as K
 from PIL import Image
 from tensorflow.python.lib.io import file_io
 
@@ -106,6 +102,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
             # train discriminator alone for 90k epochs
             # then train disc + gen for another 400k epochs. Total of 500k
             else:
+                # pdb.set_trace()
                 print('training disc.net loss...')
                 # throw in real unedited images with label VALID
                 d_loss_real = disc_brain.train_on_batch([images, points], valid)
@@ -146,20 +143,42 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
             DISC_WEIGHTS_GCS_PATH = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_discriminator.h5"
             BRAIN_WEIGHTS_GCS_PATH = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_brain.h5"
 
-            print('Saving weights to local path ' + GEN_WEIGHTS_LOCAL_PATH)
-            gen_brain.save(GEN_WEIGHTS_LOCAL_PATH)
-            print('Copying weights to GCS ' + GEN_WEIGHTS_GCS_PATH)
-            copy_file_to_gcs(GEN_WEIGHTS_LOCAL_PATH, GEN_WEIGHTS_GCS_PATH)
+            pdb.set_trace()
+            print('Saving gen.net checkpoint weights to path ' + GEN_WEIGHTS_GCS_PATH)
+            gen_checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=gen_brain)
+            gen_checkpoint.write(
+                GEN_WEIGHTS_GCS_PATH,
+                session=None
+            )
 
-            print('Saving weights to local path ' + DISC_WEIGHTS_LOCAL_PATH)
-            disc_brain.save(DISC_WEIGHTS_LOCAL_PATH)
-            print('Copying weights to GCS ' + DISC_WEIGHTS_GCS_PATH)
-            copy_file_to_gcs(DISC_WEIGHTS_GCS_PATH, DISC_WEIGHTS_GCS_PATH)
+            print('Saving disc.net checkpoint weights to path ' + DISC_WEIGHTS_GCS_PATH)
+            disc_checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=disc_brain)
+            disc_checkpoint.write(
+                DISC_WEIGHTS_GCS_PATH,
+                session=None
+            )
 
-            print('Saving weights to local path ' + BRAIN_WEIGHTS_LOCAL_PATH)
-            brain.save(BRAIN_WEIGHTS_LOCAL_PATH)
-            print('Copying weights to GCS ' + BRAIN_WEIGHTS_GCS_PATH)
-            copy_file_to_gcs(BRAIN_WEIGHTS_LOCAL_PATH, BRAIN_WEIGHTS_GCS_PATH)
+            print('Saving gans.net checkpoint weights to path ' + BRAIN_WEIGHTS_GCS_PATH)
+            brain_checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=brain)
+            brain_checkpoint.write(
+                BRAIN_WEIGHTS_GCS_PATH,
+                session=None
+            )
+
+            # print('Saving weights to local path ' + GEN_WEIGHTS_LOCAL_PATH)
+            # gen_brain.save(GEN_WEIGHTS_LOCAL_PATH)
+            # print('Copying weights to GCS ' + GEN_WEIGHTS_GCS_PATH)
+            # copy_file_to_gcs(GEN_WEIGHTS_LOCAL_PATH, GEN_WEIGHTS_GCS_PATH)
+            #
+            # print('Saving weights to local path ' + DISC_WEIGHTS_LOCAL_PATH)
+            # disc_brain.save(DISC_WEIGHTS_LOCAL_PATH)
+            # print('Copying weights to GCS ' + DISC_WEIGHTS_GCS_PATH)
+            # copy_file_to_gcs(DISC_WEIGHTS_GCS_PATH, DISC_WEIGHTS_GCS_PATH)
+            #
+            # print('Saving weights to local path ' + BRAIN_WEIGHTS_LOCAL_PATH)
+            # brain.save(BRAIN_WEIGHTS_LOCAL_PATH)
+            # print('Copying weights to GCS ' + BRAIN_WEIGHTS_GCS_PATH)
+            # copy_file_to_gcs(BRAIN_WEIGHTS_LOCAL_PATH, BRAIN_WEIGHTS_GCS_PATH)
 
             # tf checkpoints
             # https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore
