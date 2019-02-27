@@ -1,63 +1,63 @@
-import numpy as np
-from keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
+from keras.layers import Concatenate, Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
 from keras.layers.normalization import BatchNormalization
 from keras.layers.merge import Concatenate
 from keras.models import Sequential, Model
-from keras.engine.network import Network
-from keras.optimizers import Adadelta
+import keras.optimizers as optimizers
 import keras.backend as K
 import tensorflow as tf
+import pdb
 
 
-def view_models(model, filename):
-    from keras.utils import plot_model
-    plot_model(model, to_file=filename, show_shapes=True)
+print('warn default shapes  (duplicate) in model.py')
+global_shape = (256, 256, 3)
+local_shape = (128, 128, 3)
+
+# hyperparameters
+input_shape = (256, 256, 3)
 
 
-def full_disc_layer(global_shape, local_shape, full_img, clip_coords):
+def full_disc_layer(params, global_shape, local_shape, full_img, clip_coords):
     # the discriminator side
     disc_model = model_discriminator(global_shape, local_shape)
 
     disc_model = disc_model([full_img, clip_coords])
-    disc_model
-    # print(disc_model)
+    # disc_model
 
     disc_brain = Model(inputs=[full_img, clip_coords], outputs=disc_model)
-    disc_brain.compile(loss='binary_crossentropy',
-                        optimizer=optimizer)
-    # disc_brain.summary()
-    view_models(disc_brain, 'summaries/disc_brain.png')
+    disc_brain.compile(loss=params.disc_loss,
+                        optimizer=getattr(optimizers, params.optimizer)(lr=params.learning_rate))
+                        # optimizer=optimizers.Adadelta(lr=0.01))
+    if params.verbosity == 'INFO':
+        print(disc_model)
+        disc_brain.summary()
+        # view_models(disc_brain, '../summaries/disc_brain.png')
+
     return disc_brain, disc_model
 
 
-def full_gen_layer(full_img, mask, ones):
-    from keras.layers import Concatenate
-
-    # grab the inverse mask, that only shows the masked areas
-    # 1 - mask
-    inverse_mask = Subtract()([ones, mask])
-
-    # which outputs the erased_image as input
-    # full_img * (1 - mask)
-    erased_image = Multiply()([full_img, inverse_mask])
+def full_gen_layer(params, full_img, mask, erased_image):
 
     # view our net
     gen_model = model_generator(global_shape)
-    # print(gen_model)
 
     # pass in the erased_image as input
     gen_model = gen_model(erased_image)
-    # print(gen_model)
 
-    gen_brain = Model(inputs=[full_img, mask, ones], outputs=gen_model)
-    # print(gen_brain)
-    view_models(gen_brain, 'summaries/gen_brain.png')
+    gen_brain = Model(inputs=[full_img, mask, erased_image], outputs=gen_model)
 
     gen_brain.compile(
-        loss='mse',
-        optimizer=optimizer
+        loss=params.gen_loss,
+        optimizer=getattr(optimizers, params.optimizer)(lr=params.learning_rate)
+        # optimizer=optimizers.Adadelta(lr=0.001)
     )
-    # gen_brain.summary()
+
+    if params.verbosity == 'INFO':
+        print(gen_model)
+        print(gen_model)
+        print(gen_brain)
+        # view_models(gen_brain, '../summaries/gen_brain.png')
+        gen_brain.summary()
+
     return gen_brain, gen_model
 
 
