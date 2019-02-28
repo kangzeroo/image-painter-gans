@@ -4,12 +4,9 @@ Kangzeroo's Keras 2.2.4 Implementation of the Paper ["Globally and Locally Consi
 
 ![Results of Original Paper](readme/preview.png)
 
-## Local Env Setup
-1. `conda env create --name MessyRoom`
-2. `conda activate MessyRoom`
-3. `pip install -r requirements.txt`
-
-## Image Data Setup
+## Setup
+0. `conda env create -f environment.yml` and then `source activate MessyRoom` and then `pip install -r requirement.txt`
+1. you might need to run `pip install -r requirements.txt --ignore-installed six==1.12.0`, and `pip install graphviz`
 1. Spin up GCloud VM and SSH into it
 2. Use `lsun_script.sh` to setup VM and download dataset
 3. Open `$ ipython notebook` to run through steps making the brain
