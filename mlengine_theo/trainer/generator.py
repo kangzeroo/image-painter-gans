@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 from tensorflow.python.lib.io import file_io
 from PIL import Image
@@ -104,8 +105,8 @@ class DataGenerator(object):
 
                 # yeild the batch of data when batch size reached
                 if len(self.images) == batch_size:
-                    images = np.asarray(self.images, dtype=np.float32) / 255
-                    points = np.asarray(self.points, dtype=np.int32)
-                    masks = np.asarray(self.masks, dtype=np.float32)
+                    images = tf.Tensor(self.images, dtype=np.float32) / 255
+                    points = tf.Tensor(self.points, dtype=np.int32)
+                    masks = tf.Tensor(self.masks, dtype=np.float32)
                     self.reset()
                     yield images, points, masks

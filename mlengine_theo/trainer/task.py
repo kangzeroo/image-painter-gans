@@ -87,8 +87,8 @@ class Trainer:
         # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
         self.mng = ModelManager(
             params,
-            global_shape=(256, 256, 3),
-            local_shape=(128, 128, 3)
+            global_image_tensor=(256, 256, 3),
+            local_image_tensor=(128, 128, 3)
         )
 
     def run_task(self):

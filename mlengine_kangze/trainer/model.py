@@ -9,15 +9,14 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adadelta
 import tensorflow.keras.backend as K
 from tensorflow.python.lib.io import file_io
-
+import pdb
 
 
 # Create the primitive generator net
-def model_generator(input_shape=(256, 256, 3)):
-    in_layer = Input(shape=input_shape)
-
+def model_generator(input_tensor):
+    pdb.set_trace()
     model = Conv2D(64, kernel_size=5, strides=1, padding='same',
-                     dilation_rate=(1, 1))(in_layer)
+                     dilation_rate=(1, 1))(input_tensor)
     model = BatchNormalization()(model)
     model = Activation('relu')(model)
 
@@ -158,7 +157,7 @@ def model_discriminator(CLIP_COORDS, GLOBAL_SHAPE=(256, 256, 3), LOCAL_SHAPE=(12
 # upgrade the primitive net to an augmented "full_gen_layer" net
 # simply has the inputs added
 def full_gen_layer(FULL_IMG, MASK, ONES, GLOBAL_SHAPE, OPTIMIZER):
-
+    pdb.set_trace()
     # grab the INVERSE_MASK, that only shows the MASKed areas
     # 1 - MASK
     INVERSE_MASK = Subtract()([ONES, MASK])

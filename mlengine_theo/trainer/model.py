@@ -9,17 +9,17 @@ import tensorflow.keras.backend as K  # there is a odd warning here - BEWARNED
 import pdb  # for debugging
 
 
-def full_disc_layer(params, global_shape, local_shape, full_img, clip_coords):
+def full_disc_layer(params, global_image_tensor, local_image_tensor, full_img, clip_coords):
     """
     creates the discriminator
     :param params: DICT - from argparser contains most paramaters
     :param global_shape: tuple - assumed RGB
-    :param local_shape: tuple - assumed RGB
+    :param local_image_tensor: tuple - assumed RGB
     :param full_img:
     :param clip_coords:
     :return:
     """
-    disc_model = model_discriminator(global_shape, local_shape, clip_coords)
+    disc_model = model_discriminator(global_image_tensor, local_image_tensor, clip_coords)
 
     disc_model = disc_model([full_img, clip_coords])
     # disc_model
@@ -34,7 +34,7 @@ def full_disc_layer(params, global_shape, local_shape, full_img, clip_coords):
     return disc_brain, disc_model
 
 
-def full_gen_layer(params, full_img, mask, erased_image, global_shape):
+def full_gen_layer(params, full_img, mask, erased_image, global_image_tensor):
     """
     oversees the generator creation
     :param params:
@@ -44,9 +44,8 @@ def full_gen_layer(params, full_img, mask, erased_image, global_shape):
     :param global_shape:
     :return:
     """
-
     # view our net
-    gen_model = model_generator(input_shape=global_shape)
+    gen_model = model_generator(global_image_tensor=global_image_tensor)
 
     # pass in the erased_image as input
     gen_model = gen_model(erased_image)
@@ -63,16 +62,17 @@ def full_gen_layer(params, full_img, mask, erased_image, global_shape):
     return gen_brain, gen_model
 
 
-def model_generator(input_shape=(256, 256, 3)):
+def model_generator(global_image_tensor):
     """
     creates the generator
     :param input_shape:
     :return:
     """
-    in_layer = tfe.Variable(input_shape)
+    # in_layer = tfe.Variable(global_image_tensor)
 
+    pdb.set_trace()
     model = Conv2D(64, kernel_size=5, strides=1, padding='same',
-                     dilation_rate=(1, 1))(in_layer)
+                     dilation_rate=(1, 1))(global_image_tensor)
     model = BatchNormalization()(model)
     model = Activation('relu')(model)
 
@@ -150,7 +150,7 @@ def model_generator(input_shape=(256, 256, 3)):
     return model_gen
 
 
-def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3), clip_coords=(1,1,1,1)):
+def model_discriminator(global_shape=(256, 256, 3), local_image_tensor=(128, 128, 3), clip_coords=(1,1,1,1)):
     def crop_image(img, crop):
         # pdb.set_trace()
         return tf.image.crop_to_bounding_box(img,
@@ -161,7 +161,7 @@ def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3), c
 
     in_pts = tfe.Variable((4,), dtype='int32')
     cropping = Lambda(lambda x: K.map_fn(lambda y: crop_image(y[0], y[1]), elems=x, dtype=tf.float32),
-                      output_shape=local_shape)
+                      output_shape=local_image_tensor)
     g_img = tfe.Variable(global_shape)
     # pdb.set_trace()
     # l_img = cropping([g_img, in_pts])
@@ -233,17 +233,17 @@ class ModelManager:
     def __init__(
         self,
         params,
-        global_shape=(256, 256, 3),
-        local_shape=(128, 128, 3),
+        global_image_tensor,
+        local_image_tensor,
     ):
         """
         manage the gan. we construct the GAN on initialization.......
         :param params: DICT - from argparser
         """
         self.params = params
-        full_img = tfe.Variable(global_shape)
-        erased_img = tfe.Variable(global_shape)
-        mask = tfe.Variable((global_shape[0], global_shape[1], 1))
+        full_img = tfe.Variable(global_image_tensor)
+        erased_img = tfe.Variable(global_image_tensor)
+        mask = tfe.Variable((global_image_tensor[0], global_image_tensor[1], 1))
         clip_coords = tfe.Variable((4,), dtype='int32')
 
         self.gen_brain, self.gen_model = full_gen_layer(
@@ -251,13 +251,13 @@ class ModelManager:
             full_img=full_img,
             mask=mask,
             erased_image=erased_img,
-            global_shape=global_shape
+            global_image_tensor=global_image_tensor
         )
 
         self.disc_brain, self.disc_model = full_disc_layer(
             params=params,
-            global_shape=global_shape,
-            local_shape=local_shape,
+            global_image_tensor=global_image_tensor,
+            local_image_tensor=local_image_tensor,
             full_img=full_img,
             clip_coords=clip_coords)
 
