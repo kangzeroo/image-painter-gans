@@ -1,14 +1,10 @@
 import numpy as np
 import pdb
 import os
-from keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
-from keras.layers.normalization import BatchNormalization
-from keras.layers.merge import Concatenate
-from keras.models import Sequential, Model
-from keras.engine.network import Network
-from keras.optimizers import Adadelta
-import keras.backend as K
 import tensorflow as tf
+from tensorflow.keras.layers import Input
+from tensorflow.keras.optimizers import Adadelta
+import tensorflow.keras.backend as K
 from PIL import Image
 from tensorflow.python.lib.io import file_io
 
@@ -47,14 +43,15 @@ MAX_TRAINING_IMAGES = 3
 # MAX_TRAINING_IMAGES = 3000000
 
 # Related to folder/file paths for input/output
-BUCKET_NAME = 'lsun-roomsets'
+INPUT_BUCKET = 'lsun-roomsets'
+OUTPUT_BUCKET = 'kangzes_jobs'
 INPUT_DIR = 'images/bedroom_val/'
 JOB_DIR = 'jobs/'
 
 
 def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
 
-    writeTestPath = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_" + TIMESTAMP + ".txt"
+    writeTestPath = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_" + TIMESTAMP + ".txt"
     with file_io.FileIO(writeTestPath, mode='wb+') as of:
         of.write("Write test passed for " + writeTestPath)
         print("Testing GCS write permission. Wrote file " + writeTestPath)
@@ -72,11 +69,11 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
 
         ALPHA,
 
-        BUCKET_NAME,
+        OUTPUT_BUCKET,
         JOB_DIR,
     )
     # get the data generator
-    train_datagen = createGenerator(BUCKET_NAME, INPUT_DIR, GLOBAL_SHAPE[:2], LOCAL_SHAPE[:2], MAX_TRAINING_IMAGES)
+    train_datagen = createGenerator(INPUT_BUCKET, INPUT_DIR, GLOBAL_SHAPE[:2], LOCAL_SHAPE[:2], MAX_TRAINING_IMAGES)
     dreamt_image = None
 
     # train over time
@@ -84,7 +81,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
         # progress bar visualization (comment out in ML Engine)
         # progbar = generic_utils.Progbar(len(train_datagen))
         print('epoch ' + str(epoch) + ' ----- processing batches from .flow()')
-        for images, points, masks in train_datagen.flow(BATCH_SIZE, BUCKET_NAME, HOLE_MIN, HOLE_MAX):
+        for images, points, masks in train_datagen.flow(BATCH_SIZE, INPUT_BUCKET, HOLE_MIN, HOLE_MAX):
             # and the matrix of ones that we depend on in the neural net to inverse masks
             mask_inv = np.ones((len(images), GLOBAL_SHAPE[0], GLOBAL_SHAPE[1], 1))
             # generate the inputs (images)
@@ -105,6 +102,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
             # train discriminator alone for 90k epochs
             # then train disc + gen for another 400k epochs. Total of 500k
             else:
+                # pdb.set_trace()
                 print('training disc.net loss...')
                 # throw in real unedited images with label VALID
                 d_loss_real = disc_brain.train_on_batch([images, points], valid)
@@ -130,7 +128,7 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
         print('--- End of Epoch ' + str(epoch))
         if epoch // EPOCHS_PER_SAVED_WEIGHTS == 0:
 
-            OUTPUT_IMAGE_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_images/epoch_" + str(epoch) + "_image.png"
+            OUTPUT_IMAGE_PATH = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_images/epoch_" + str(epoch) + "_image.png"
             print("Saving last generated image to " + OUTPUT_IMAGE_PATH)
             if dreamt_image is not None:
                 with file_io.FileIO(OUTPUT_IMAGE_PATH, 'wb') as f:
@@ -141,24 +139,46 @@ def run_training_job(JOB_PARAMS, FILE_PARAMS, HYPER_PARAMS, TIMESTAMP):
             DISC_WEIGHTS_LOCAL_PATH = "/output_models/epoch_" + str(epoch) + "_discriminator.h5"
             BRAIN_WEIGHTS_LOCAL_PATH = "/output_models/epoch_" + str(epoch) + "_brain.h5"
 
-            GEN_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_generator.h5"
-            DISC_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_discriminator.h5"
-            BRAIN_WEIGHTS_GCS_PATH = "gs://" + BUCKET_NAME + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_brain.h5"
+            GEN_WEIGHTS_GCS_PATH = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_generator.h5"
+            DISC_WEIGHTS_GCS_PATH = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_discriminator.h5"
+            BRAIN_WEIGHTS_GCS_PATH = "gs://" + OUTPUT_BUCKET + "/" + JOB_DIR + "output_models/epoch_" + str(epoch) + "_brain.h5"
 
-            print('Saving weights to local path ' + GEN_WEIGHTS_LOCAL_PATH)
-            gen_brain.save(GEN_WEIGHTS_LOCAL_PATH)
-            print('Copying weights to GCS ' + GEN_WEIGHTS_GCS_PATH)
-            copy_file_to_gcs(GEN_WEIGHTS_LOCAL_PATH, GEN_WEIGHTS_GCS_PATH)
+            pdb.set_trace()
+            print('Saving gen.net checkpoint weights to path ' + GEN_WEIGHTS_GCS_PATH)
+            gen_checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=gen_brain)
+            gen_checkpoint.write(
+                GEN_WEIGHTS_GCS_PATH,
+                session=None
+            )
 
-            print('Saving weights to local path ' + DISC_WEIGHTS_LOCAL_PATH)
-            disc_brain.save(DISC_WEIGHTS_LOCAL_PATH)
-            print('Copying weights to GCS ' + DISC_WEIGHTS_GCS_PATH)
-            copy_file_to_gcs(DISC_WEIGHTS_GCS_PATH, DISC_WEIGHTS_GCS_PATH)
+            print('Saving disc.net checkpoint weights to path ' + DISC_WEIGHTS_GCS_PATH)
+            disc_checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=disc_brain)
+            disc_checkpoint.write(
+                DISC_WEIGHTS_GCS_PATH,
+                session=None
+            )
 
-            print('Saving weights to local path ' + BRAIN_WEIGHTS_LOCAL_PATH)
-            brain.save(BRAIN_WEIGHTS_LOCAL_PATH)
-            print('Copying weights to GCS ' + BRAIN_WEIGHTS_GCS_PATH)
-            copy_file_to_gcs(BRAIN_WEIGHTS_LOCAL_PATH, BRAIN_WEIGHTS_GCS_PATH)
+            print('Saving gans.net checkpoint weights to path ' + BRAIN_WEIGHTS_GCS_PATH)
+            brain_checkpoint = tf.train.Checkpoint(optimizer=OPTIMIZER, model=brain)
+            brain_checkpoint.write(
+                BRAIN_WEIGHTS_GCS_PATH,
+                session=None
+            )
+
+            # print('Saving weights to local path ' + GEN_WEIGHTS_LOCAL_PATH)
+            # gen_brain.save(GEN_WEIGHTS_LOCAL_PATH)
+            # print('Copying weights to GCS ' + GEN_WEIGHTS_GCS_PATH)
+            # copy_file_to_gcs(GEN_WEIGHTS_LOCAL_PATH, GEN_WEIGHTS_GCS_PATH)
+            #
+            # print('Saving weights to local path ' + DISC_WEIGHTS_LOCAL_PATH)
+            # disc_brain.save(DISC_WEIGHTS_LOCAL_PATH)
+            # print('Copying weights to GCS ' + DISC_WEIGHTS_GCS_PATH)
+            # copy_file_to_gcs(DISC_WEIGHTS_GCS_PATH, DISC_WEIGHTS_GCS_PATH)
+            #
+            # print('Saving weights to local path ' + BRAIN_WEIGHTS_LOCAL_PATH)
+            # brain.save(BRAIN_WEIGHTS_LOCAL_PATH)
+            # print('Copying weights to GCS ' + BRAIN_WEIGHTS_GCS_PATH)
+            # copy_file_to_gcs(BRAIN_WEIGHTS_LOCAL_PATH, BRAIN_WEIGHTS_GCS_PATH)
 
             # tf checkpoints
             # https://www.tensorflow.org/api_docs/python/tf/train/Checkpoint#restore

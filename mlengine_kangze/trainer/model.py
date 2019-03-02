@@ -1,12 +1,13 @@
 import numpy as np
-from keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
-from keras.layers.normalization import BatchNormalization
-from keras.layers.merge import Concatenate
-from keras.models import Sequential, Model
-from keras.engine.network import Network
-from keras.optimizers import Adadelta
-import keras.backend as K
+import pdb
 import tensorflow as tf
+# from tensorflow.keras.layers import Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
+# from tensorflow.keras.layers.normalization import BatchNormalization
+# from tensorflow.keras.layers.merge import Concatenate
+from tensorflow.keras.layers import Lambda, Reshape, BatchNormalization, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Multiply, concatenate
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adadelta
+import tensorflow.keras.backend as K
 from tensorflow.python.lib.io import file_io
 
 
@@ -90,12 +91,11 @@ def model_generator(input_shape=(256, 256, 3)):
                      padding='same', dilation_rate=(1, 1))(model)
     model = BatchNormalization()(model)
     model = Activation('sigmoid')(model)
-    model_gen = Model(inputs=in_layer, outputs=model)
-    model_gen.name = 'Primitive-Generator'
+    model_gen = Model(inputs=in_layer, outputs=model, name='Primitive-Generator')
     return model_gen
 
 # Create the primitive discriminator net
-def model_discriminator(GLOBAL_SHAPE=(256, 256, 3), LOCAL_SHAPE=(128, 128, 3)):
+def model_discriminator(CLIP_COORDS, GLOBAL_SHAPE=(256, 256, 3), LOCAL_SHAPE=(128, 128, 3)):
     def crop_image(img, crop):
         return tf.image.crop_to_bounding_box(img,
                                              crop[1],
@@ -103,11 +103,10 @@ def model_discriminator(GLOBAL_SHAPE=(256, 256, 3), LOCAL_SHAPE=(128, 128, 3)):
                                              crop[3] - crop[1],
                                              crop[2] - crop[0])
 
-    in_pts = Input(shape=(4,), dtype='int32')
     cropping = Lambda(lambda x: K.map_fn(lambda y: crop_image(y[0], y[1]), elems=x, dtype=tf.float32),
                       output_shape=LOCAL_SHAPE)
     g_img = Input(shape=GLOBAL_SHAPE)
-    l_img = cropping([g_img, in_pts])
+    l_img = cropping([g_img, CLIP_COORDS])
 
     # Local Discriminator
     x_l = Conv2D(64, kernel_size=5, strides=2, padding='same')(l_img)
@@ -125,6 +124,7 @@ def model_discriminator(GLOBAL_SHAPE=(256, 256, 3), LOCAL_SHAPE=(128, 128, 3)):
     x_l = Conv2D(512, kernel_size=5, strides=2, padding='same')(x_l)
     x_l = BatchNormalization()(x_l)
     x_l = Activation('relu')(x_l)
+    x_l = Reshape((4,4,512))(x_l)
     x_l = Flatten()(x_l)
     x_l = Dense(1024, activation='relu')(x_l)
 
@@ -150,16 +150,14 @@ def model_discriminator(GLOBAL_SHAPE=(256, 256, 3), LOCAL_SHAPE=(128, 128, 3)):
     x_g = Flatten()(x_g)
     x_g = Dense(1024, activation='relu')(x_g)
 
-    x = Concatenate(axis=1)([x_l, x_g])
+    x = concatenate([x_l, x_g], axis=1)
     x = Dense(1, activation='sigmoid')(x)
-    model_disc = Model(inputs=[g_img, in_pts], outputs=x)
-    model_disc.name = 'Primitive-Discriminator'
+    model_disc = Model(inputs=[g_img, CLIP_COORDS], outputs=x, name='Primitive-Discriminator')
     return model_disc
 
 # upgrade the primitive net to an augmented "full_gen_layer" net
 # simply has the inputs added
 def full_gen_layer(FULL_IMG, MASK, ONES, GLOBAL_SHAPE, OPTIMIZER):
-    from keras.layers import Concatenate
 
     # grab the INVERSE_MASK, that only shows the MASKed areas
     # 1 - MASK
@@ -188,11 +186,8 @@ def full_gen_layer(FULL_IMG, MASK, ONES, GLOBAL_SHAPE, OPTIMIZER):
 # connect the primitive discriminator net to the output of the augmented net
 def full_disc_layer(GLOBAL_SHAPE, LOCAL_SHAPE, FULL_IMG, CLIP_COORDS, OPTIMIZER):
     # the discriminator side
-    disc_model = model_discriminator(GLOBAL_SHAPE, LOCAL_SHAPE)
-
+    disc_model = model_discriminator(CLIP_COORDS, GLOBAL_SHAPE, LOCAL_SHAPE)
     disc_model = disc_model([FULL_IMG, CLIP_COORDS])
-    disc_model
-    # print(disc_model)
 
     disc_brain = Model(inputs=[FULL_IMG, CLIP_COORDS], outputs=disc_model)
     disc_brain.compile(loss='binary_crossentropy',
@@ -220,8 +215,7 @@ def getBrains(
 
     # the final brain
     disc_model.trainable = False
-    connected_disc = Model(inputs=[FULL_IMG, CLIP_COORDS], outputs=disc_model)
-    connected_disc.name = 'Connected-GANs'
+    connected_disc = Model(inputs=[FULL_IMG, CLIP_COORDS], outputs=disc_model, name='Connected-GANs')
     # print(connected_disc)
 
     brain = Model(inputs=[FULL_IMG, MASK, ONES, CLIP_COORDS], outputs=[gen_model, connected_disc([gen_model, CLIP_COORDS])])

@@ -1,11 +1,12 @@
-from keras.layers import Concatenate, Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Input, Subtract, Add, Multiply
-from keras.layers.normalization import BatchNormalization
-from keras.layers.merge import Concatenate
-from keras.models import Model
-import keras.optimizers as optimizers
-import keras.backend as K  # there is a odd warning here - BEWARNED
 import tensorflow as tf
-# import pdb  # for debugging
+from tensorflow.keras.layers import Concatenate, Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Subtract, Add, Multiply
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.layers import Concatenate
+import tensorflow.contrib.eager as tfe
+from tensorflow.keras.models import Model
+import tensorflow.train as optimizers
+import tensorflow.keras.backend as K  # there is a odd warning here - BEWARNED
+import pdb  # for debugging
 
 
 def full_disc_layer(params, global_shape, local_shape, full_img, clip_coords):
@@ -18,7 +19,7 @@ def full_disc_layer(params, global_shape, local_shape, full_img, clip_coords):
     :param clip_coords:
     :return:
     """
-    disc_model = model_discriminator(global_shape, local_shape)
+    disc_model = model_discriminator(global_shape, local_shape, clip_coords)
 
     disc_model = disc_model([full_img, clip_coords])
     # disc_model
@@ -68,7 +69,7 @@ def model_generator(input_shape=(256, 256, 3)):
     :param input_shape:
     :return:
     """
-    in_layer = Input(shape=input_shape)
+    in_layer = tfe.Variable(input_shape)
 
     model = Conv2D(64, kernel_size=5, strides=1, padding='same',
                      dilation_rate=(1, 1))(in_layer)
@@ -145,27 +146,35 @@ def model_generator(input_shape=(256, 256, 3)):
                      padding='same', dilation_rate=(1, 1))(model)
     model = BatchNormalization()(model)
     model = Activation('sigmoid')(model)
-    model_gen = Model(inputs=in_layer, outputs=model)
-    model_gen.name = 'Gener8tor'
+    model_gen = Model(inputs=in_layer, outputs=model, name='Gener8tor')
     return model_gen
 
 
-def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3)):
+def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3), clip_coords=(1,1,1,1)):
     def crop_image(img, crop):
+        # pdb.set_trace()
         return tf.image.crop_to_bounding_box(img,
-                                             crop[1],
-                                             crop[0],
-                                             crop[3] - crop[1],
-                                             crop[2] - crop[0])
+                                             crop.shape[1],
+                                             crop.shape[0],
+                                             crop.shape[3] - crop.shape[1],
+                                             crop.shape[2] - crop.shape[0])
 
-    in_pts = Input(shape=(4,), dtype='int32')
+    in_pts = tfe.Variable((4,), dtype='int32')
     cropping = Lambda(lambda x: K.map_fn(lambda y: crop_image(y[0], y[1]), elems=x, dtype=tf.float32),
                       output_shape=local_shape)
-    g_img = Input(shape=global_shape)
-    l_img = cropping([g_img, in_pts])
+    g_img = tfe.Variable(global_shape)
+    # pdb.set_trace()
+    # l_img = cropping([g_img, in_pts])
+    l_img = tf.image.crop_to_bounding_box(g_img,
+                                         clip_coords[1],
+                                         clip_coords[0],
+                                         clip_coords[3] - clip_coords[1],
+                                         clip_coords[2] - clip_coords[0])
+
 
     # Local Discriminator
     x_l = Conv2D(64, kernel_size=5, strides=2, padding='same')(l_img)
+    # pdb.set_trace()
     x_l = BatchNormalization()(x_l)
     x_l = Activation('relu')(x_l)
     x_l = Conv2D(128, kernel_size=5, strides=2, padding='same')(x_l)
@@ -173,6 +182,7 @@ def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3)):
     x_l = Activation('relu')(x_l)
     x_l = Conv2D(256, kernel_size=5, strides=2, padding='same')(x_l)
     x_l = BatchNormalization()(x_l)
+    # pdb.set_trace()
     x_l = Activation('relu')(x_l)
     x_l = Conv2D(512, kernel_size=5, strides=2, padding='same')(x_l)
     x_l = BatchNormalization()(x_l)
@@ -180,7 +190,10 @@ def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3)):
     x_l = Conv2D(512, kernel_size=5, strides=2, padding='same')(x_l)
     x_l = BatchNormalization()(x_l)
     x_l = Activation('relu')(x_l)
+    # pdb.set_trace()
     x_l = Flatten()(x_l)
+    # pdb.set_trace()
+    # x_l = Reshape()(x_l)
     x_l = Dense(1024, activation='relu')(x_l)
 
     # Global Discriminator
@@ -202,13 +215,14 @@ def model_discriminator(global_shape=(256, 256, 3), local_shape=(128, 128, 3)):
     x_g = Conv2D(512, kernel_size=5, strides=2, padding='same')(x_g)
     x_g = BatchNormalization()(x_g)
     x_g = Activation('relu')(x_g)
+    # pdb.set_trace()
     x_g = Flatten()(x_g)
+    # pdb.set_trace()
     x_g = Dense(1024, activation='relu')(x_g)
 
     x = Concatenate(axis=1)([x_l, x_g])
     x = Dense(1, activation='sigmoid')(x)
-    model_disc = Model(inputs=[g_img, in_pts], outputs=x)
-    model_disc.name = 'Discimi-hater'
+    model_disc = Model(inputs=[g_img, in_pts], outputs=x, name='Discimi-hater')
     return model_disc
 
 
@@ -227,10 +241,10 @@ class ModelManager:
         :param params: DICT - from argparser
         """
         self.params = params
-        full_img = Input(shape=global_shape)
-        erased_img = Input(shape=global_shape)
-        mask = Input(shape=(global_shape[0], global_shape[1], 1))
-        clip_coords = Input(shape=(4,), dtype='int32')
+        full_img = tfe.Variable(global_shape)
+        erased_img = tfe.Variable(global_shape)
+        mask = tfe.Variable((global_shape[0], global_shape[1], 1))
+        clip_coords = tfe.Variable((4,), dtype='int32')
 
         self.gen_brain, self.gen_model = full_gen_layer(
             params=params,
@@ -249,8 +263,7 @@ class ModelManager:
 
         # the final brain
         self.disc_model.trainable = False
-        self.connected_disc = Model(inputs=[full_img, clip_coords], outputs=self.disc_model)
-        self.connected_disc.name = 'Connected-Discrimi-Hater'
+        self.connected_disc = Model(inputs=[full_img, clip_coords], outputs=self.disc_model, name='Connected-Discrimi-Hater')
 
         self.brain = Model(
             inputs=[full_img, mask, erased_img, clip_coords],
@@ -272,20 +285,20 @@ class ModelManager:
         print('compilling hater')
         self.disc_brain.compile(
             loss=self.params.disc_loss,
-            optimizer=getattr(optimizers, self.params.optimizer)(lr=self.params.learning_rate)
+            optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
         )
         # optimizer=optimizers.Adadelta(lr=0.01))
         print('compilling generator')
         self.gen_brain.compile(
             loss=self.params.gen_loss,
-            optimizer=getattr(optimizers, self.params.optimizer)(lr=self.params.learning_rate)
+            optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
             # optimizer=optimizers.Adadelta(lr=0.001)
         )
         print('compilling brain ---- note some hardcodded loss up in here')
         self.brain.compile(
             loss=['mse', 'binary_crossentropy'],
             loss_weights=[1.0, self.params.alpha],
-            optimizer=self.params.optimizer
+            optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
         )
 
     def describe(self):

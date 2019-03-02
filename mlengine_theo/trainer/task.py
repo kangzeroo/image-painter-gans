@@ -6,7 +6,8 @@ from datetime import datetime
 from keras.utils import generic_utils
 from PIL import Image
 # import pdb  # run debugging from command
-
+tf.enable_eager_execution()
+tf.executing_eagerly()
 
 # NOTE -- for some fucking ass reason, need to change the import names when running local versus cloud............
 #         local as in this modules README at least....
