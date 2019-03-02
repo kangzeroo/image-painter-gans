@@ -3,6 +3,7 @@ from tensorflow.python.lib.io import file_io
 from PIL import Image
 import cv2
 
+# this throws error in my editor.................
 from google.cloud import storage
 from google import auth
 
@@ -37,6 +38,9 @@ class DataGenerator(object):
         self.local_size = local_size
         self.reset()
         self.img_file_list = []
+        self.images = []
+        self.points = []
+        self.masks = []
         # for now we get max self.count photos and add them to self.img_file_list
         for img_cnt, blob in enumerate(bucket.list_blobs(prefix=input_dir)):
             self.img_file_list.append(blob.name)
@@ -47,16 +51,15 @@ class DataGenerator(object):
     def __len__(self):
         return len(self.img_file_list)
 
-    # we also track the preprocessed images, points, and masks
     def reset(self):
+        # we also track the preprocessed images, points, and masks
         self.images = []
         self.points = []
         self.masks = []
 
-    # iterates over self.img_file_list and does preprocessing
     def flow(self, batch_size, hole_min=64, hole_max=128):
         """
-        function to "flow" through the directory. computes random masks on the fly.
+        iterates over self.img_file_list and does preprocessing. computes random masks on the fly.
         :param batch_size: INT - the size of the current batch
         :param hole_min: INT -
         :param hole_max: INT -
@@ -72,7 +75,7 @@ class DataGenerator(object):
                 # then convert the RGB image to an array so that cv2 can read it
                 img = np.asarray(img, dtype="uint8")
                 # resize images
-                img_resized = cv2.resize(img, self.image_size)[:, :, ::-1]
+                img_resized = cv2.resize(img, self.image_size)[:, :, ::-1]  # this is giving me a not found error fml...
                 # take a look at the images
                 # cv2.imshow(f'image_{idx}_resized', img_resized)
                 # cv2.waitKey(0)
