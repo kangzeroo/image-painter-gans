@@ -10,8 +10,8 @@ $ python -m trainer.task
 1. Set job name
 ```
 now=$(date +"%Y%m%d_%H%M%S")
-JOB_NAME="ai_maid_test_theo_$now"
-PACKAGE_STAGING_PATH="gs://theos_jobs"
+JOB_NAME="ai_maid_test_kangze_$now"
+PACKAGE_STAGING_PATH="gs://kangzes_jobs"
 ```
 2. Run job locally
 ```
@@ -19,7 +19,7 @@ $ gcloud ml-engine local train --package-path trainer \
                                --module-name trainer.task \
                                -- \
 
-OR :::: 
+OR ::::
 
 $ cd mlengine_theo/trainer
 
