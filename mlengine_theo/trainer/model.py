@@ -181,7 +181,7 @@ class DiscConnected(Model):
 
     def call(self, inputs, masks, training=False):
         # x = tf.keras.cont(inputs)
-        x = tf.concat([self.disc_model_local(masks), self.disc_model_global(inputs)], 0)
+        x = tf.concat([self.disc_model_local(masks), self.disc_model_global(inputs)], axis=1)
         x = Dense(1, activation='sigmoid')(x)
         return x
 
@@ -264,10 +264,11 @@ class ModelManager(Model):
 
         with tf.GradientTape() as tape:
             output = self.disc_model(imgs, masks)
+            # pdb.set_trace()
             loss_value = tf.losses.mean_squared_error(labels, output)
 
         self.disc_loss_history.append(loss_value.numpy())
-        grads = tape.gradient(loss_value, self.disc_model_combined.trainable_variables)  # this takes a long time on cpu
+        grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
         self.disc_optimizer.apply_gradients(
             zip(
                 grads,
@@ -346,7 +347,7 @@ class ModelManager(Model):
                     # # throw in A.I. generated images with label FAKE
                     # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
                     # # combine and set the disc loss
-
+                    pdb.set_trace()
                     d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
