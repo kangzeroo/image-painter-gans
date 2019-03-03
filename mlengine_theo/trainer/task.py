@@ -13,7 +13,7 @@ tf.executing_eagerly()
 #         local as in this modules README at least....
 
 # local
-from model import full_gen_layer, full_disc_layer, ModelManager
+from model import full_gen_layer, ModelManager
 from generator import DataGenerator
 from utils import save_img, initialize_hyper_params
 

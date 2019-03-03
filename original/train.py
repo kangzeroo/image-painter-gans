@@ -59,6 +59,7 @@ class DataGenerator(object):
                 points = np.asarray(self.points, dtype=np.int32)
                 masks = np.asarray(self.masks, dtype=np.float32)
                 self.reset()
+                pdb.set_trace()
                 yield inputs, points, masks
 
 def example_gan(result_dir="output", data_dir="data"):

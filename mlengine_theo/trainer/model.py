@@ -8,35 +8,7 @@ import tensorflow.keras.backend as K  # there is a odd warning here - BEWARNED
 from keras.utils import generic_utils
 import pdb  # for debugging
 import numpy as np
-
-
-def full_disc_layer(params, global_image_tensor, local_image_tensor, full_img, clip_coords):
-    """
-    creates the discriminator
-    :param params: DICT - from argparser contains most paramaters
-    :param global_shape: tuple - assumed RGB
-    :param local_image_tensor: tuple - assumed RGB
-    :param full_img:
-    :param clip_coords:
-    :return:
-    """
-    x_l, x_g = model_discriminator()
-    # x = Concatenate(axis=1)([x_l, x_g])
-    # x = Dense(1, activation='sigmoid')(x)
-
-    # model_disc = Model(inputs=[g_img, in_pts], outputs=x, name='Discimi-hater')
-
-    # disc_model = disc_model([full_img, clip_coords])
-    # disc_model
-
-    # disc_brain = Model(inputs=[full_img, clip_coords], outputs=disc_model)
-
-    # if params.verbosity == 'INFO':
-    #     print(disc_model)
-    #     disc_brain.summary()
-    #     # view_models(disc_brain, '../summaries/disc_brain.png')
-
-    return x_l, x_g
+from PIL import Image
 
 
 def full_gen_layer():
@@ -145,6 +117,10 @@ def model_generator():
         Conv2D(32, kernel_size=3, strides=1,
                padding='same', dilation_rate=(1, 1)),
         BatchNormalization(),
+        Activation('sigmoid'),
+        Conv2D(3, kernel_size=3, strides=1,
+                       padding='same', dilation_rate=(1, 1)),
+        BatchNormalization(),
         Activation('sigmoid')
     ])
 
@@ -213,6 +189,12 @@ def model_discriminator():
         Flatten(),
         Dense(1024, activation='relu')
     ])
+    # pdb.set_trace()
+    # disc_model = tf.keras.Model([
+    #     Concatenate(axis=1)([x_l, x_g]),
+    #     Dense(1, activation='sigmoid')
+    # ])
+
 
     # x = Concatenate(axis=1)([x_l, x_g])
     # x = Dense(1, activation='sigmoid')(x)
@@ -237,20 +219,17 @@ class ModelManager(Model):
         """
         super(ModelManager, self).__init__()
         self.params = params
-        full_img = tfe.Variable(global_image_tensor)
-        erased_img = tfe.Variable(global_image_tensor)
-        mask = tfe.Variable((global_image_tensor[0], global_image_tensor[1], 1))
-        clip_coords = tfe.Variable((4,), dtype='int32')
+        self.gen_loss_history, self.disc_loss_history = [], []
+        self.gen_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
+        self.disc_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
+
+        # erased_img = tfe.Variable(global_image_tensor)
+        # mask = tfe.Variable((global_image_tensor[0], global_image_tensor[1], 1))
 
         self.gen_model = full_gen_layer()
 
-        self.x_l, self.x_g = full_disc_layer(
-            params=params,
-            global_image_tensor=global_image_tensor,
-            local_image_tensor=local_image_tensor,
-            full_img=full_img,
-            clip_coords=clip_coords
-        )
+        self.x_l, self.x_g = model_discriminator()
+
         # x = Concatenate(axis=1)([x_l, x_g])
         # x = Dense(1, activation='sigmoid')(x)
 
@@ -274,7 +253,61 @@ class ModelManager(Model):
         """
 
         generated_img = self.gen_model(img)
+
         return generated_img
+
+    def train_disc(self, imgs, labels):
+        """
+        we kinda need to create it on the fly also
+        :param imgs:
+        :param labels:
+        :return:
+        """
+        # we need to make the model on the fly i think ....
+        # we need to call both x_l and x_g ....
+        pdb.set_trace()
+        # this part is fucked
+        xl_output = self.x_l(imgs)
+        xg_output = self.x_g(imgs)
+        output = Concatenate()([xl_output, xg_output])
+        output = Dense(1, activation='sigmoid')(output)
+
+        with tf.GradientTape() as tape:
+            pdb.set_trace()
+            logits = self.output(imgs, training=True)
+            loss_value = tf.losses.mean_squared_error(labels, logits)
+
+        self.disc_loss_history.append(loss_value.numpy())
+        grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
+        self.disc_optimizer.apply_gradients(
+            zip(
+                grads,
+                self.disc_model.trainable_variables
+            ), global_step=tf.train.get_or_create_global_step()
+        )
+
+        return loss_value
+
+    def train_gen(self, imgs, labels):
+        """
+        trains and returns the loss on the GENERATOR
+        :return:
+        """
+
+        with tf.GradientTape() as tape:
+            logits = self.gen_model(imgs, training=True)
+            loss_value = tf.losses.mean_squared_error(labels, logits)
+
+        self.gen_loss_history.append(loss_value.numpy())
+        grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
+        self.gen_optimizer.apply_gradients(
+            zip(
+                grads,
+                self.gen_model.trainable_variables
+            ), global_step=tf.train.get_or_create_global_step()
+        )
+
+        return loss_value
 
     def train(self, data_gen):
         # data generator
@@ -283,18 +316,19 @@ class ModelManager(Model):
         dreamt_image = None
         # g_epochs = int(self.params.num_epochs * 0.18)
         # d_epochs = int(self.params.num_epochs * 0.02)
-        g_epochs = 2
-        d_epochs = 2
+        g_epochs = 1
+        d_epochs = 1
         for epoch in range(self.params.num_epochs):
             print('\nstarting epoch {}\n'.format(epoch))
             # progress bar visualization (comment out in ML Engine)
             progbar = generic_utils.Progbar(len(data_gen))
             for images, points, masks in data_gen.flow(batch_size=self.params.train_batch_size):
-                masks_inv = [1 - mask for mask in masks]
-                erased_imgs = np.asarray([img * mask_inv for img, mask_inv in zip(images, masks)])
-                # generate the inputs (images)
-                pdb.set_trace()
-                generated_img = self.predict(erased_imgs)
+                images = tf.cast(images, tf.float32)
+                masks = tf.cast(masks, tf.float32)
+                erased_imgs = tf.math.multiply(images, tf.math.subtract(tf.constant(1, dtype=tf.float32), masks))
+                # generate predictions on the erased images
+                generated_imgs = self.predict(erased_imgs)
+
                 # generate the labels
                 valid = np.ones((self.params.train_batch_size, 1))
                 fake = np.zeros((self.params.train_batch_size, 1))
@@ -306,15 +340,24 @@ class ModelManager(Model):
                 if epoch < g_epochs:
                     # set the gen loss
                     # get the loss from the batch
-                    g_loss = self.mng.gen_brain.train_on_batch([images, masks_inv, erased_imgs], generated_img)
+
+                    g_loss = self.train_gen(erased_imgs, images)
+
                 # train discriminator alone for 90k epochs
                 # then train disc + gen for another 400k epochs. Total of 500k
                 else:
-                    # throw in real unedited images with label VALID
-                    d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
-                    # throw in A.I. generated images with label FAKE
-                    d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
-                    # combine and set the disc loss
+
+                    # not fixed yet
+                    # print('warn not yet implemented disc')
+                    d_loss_real = self.train_disc(images, valid)
+                    d_loss_fake = self.train_disc(generated_imgs, fake)
+
+                    # # throw in real unedited images with label VALID
+                    # d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
+                    # # throw in A.I. generated images with label FAKE
+                    # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
+                    # # combine and set the disc loss
+
                     d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
@@ -322,17 +365,19 @@ class ModelManager(Model):
                         # and update the generator loss
                         g_loss = g_loss[0] + self.params.alpha * g_loss[1]
                 # progress bar visualization (comment out in ML Engine)
-                progbar.add(images.shape[0], values=[("Disc Loss: ", d_loss), ("Gen mse: ", g_loss)])
+                # NOTE - d_loss is not .numpy() fied yet - WARN !!!!!!!!!!!!!!!
+                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss), ("Gen mse: ", g_loss.numpy())])
                 batch_count += 1
-                # save the generated image
-                last_img = generated_img[0]
-                last_img *= 255
-                dreamt_image = Image.fromarray(last_img.astype('uint8'), 'RGB')
 
             # clean this up ......... !!! !!!! !!!!! ! ! !! ! ! !! !!! ! ! !!
             # gen_brain.save(f"./outputs/models/batch_{batch_count}_generator.h5")
             # disc_brain.save(f"./outputs/models/batch_{batch_count}discriminator.h5")
             if epoch % self.params.epoch_save_frequency == 0 and epoch > 0:
+                # save the generated image
+                last_img = generated_imgs[0]
+                last_img *= 255
+                pdb.set_trace()
+                dreamt_image = Image.fromarray(np.asarray(last_img, dtype='uint8'), 'RGB')
                 if dreamt_image is not None:
                     output_image_path = 'gs://{}/{}/images/epoch_{}_image.png'.format(
                         self.params.staging_bucketname,

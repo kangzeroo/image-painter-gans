@@ -64,7 +64,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=10  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY
+        default=3  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -104,7 +104,7 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--staging-bucketname',
-        default="kangzes_job",
+        default="t_job",
         type=str,
     )
     args_parser.add_argument(
@@ -152,7 +152,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=100,
+        default=5,
         type=int
     )
     # Argument to turn on all logging

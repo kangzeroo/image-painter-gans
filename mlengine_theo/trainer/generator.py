@@ -3,6 +3,7 @@ import numpy as np
 from tensorflow.python.lib.io import file_io
 from PIL import Image
 import cv2
+import pdb
 
 # this throws error in my editor.................
 from google.cloud import storage
@@ -105,8 +106,12 @@ class DataGenerator(object):
 
                 # yeild the batch of data when batch size reached
                 if len(self.images) == batch_size:
-                    images = [a / 255 for a in self.images]
+                    images = np.asarray([a / 255 for a in self.images])
                     points = self.points
                     masks = self.masks
                     self.reset()
+                    # dataset = tf.data.Dataset.from_tensor_slices(
+                    #     (tf.cast(mnist_images[..., tf.newaxis] / 255, tf.float32),
+                    #      tf.cast(mnist_labels, tf.int64)))
+                    # dataset = dataset.shuffle(1000).batch(32)
                     yield images, points, masks
