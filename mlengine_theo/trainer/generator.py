@@ -105,8 +105,8 @@ class DataGenerator(object):
 
                 # yeild the batch of data when batch size reached
                 if len(self.images) == batch_size:
-                    images = tf.Tensor(self.images, dtype=np.float32) / 255
-                    points = tf.Tensor(self.points, dtype=np.int32)
-                    masks = tf.Tensor(self.masks, dtype=np.float32)
+                    images = [a / 255 for a in self.images]
+                    points = self.points
+                    masks = self.masks
                     self.reset()
                     yield images, points, masks

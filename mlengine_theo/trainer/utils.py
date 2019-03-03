@@ -64,7 +64,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=1  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY
+        default=10  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -152,7 +152,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=3,
+        default=100,
         type=int
     )
     # Argument to turn on all logging
