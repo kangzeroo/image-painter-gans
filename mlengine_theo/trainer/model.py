@@ -333,8 +333,8 @@ class ModelManager(Model):
                     d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
-                        pdb.set_trace()
-                        g_loss = self.disc_model_combined(generated_imgs, masks, fake)
+                        # pdb.set_trace()
+                        g_loss = self.train_gen(generated_imgs, masks, fake)
                         # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
                         # and update the generator loss
                         g_loss = g_loss[0] + self.params.alpha * g_loss[1]
