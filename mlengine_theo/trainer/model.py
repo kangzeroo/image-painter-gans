@@ -11,35 +11,6 @@ import numpy as np
 from PIL import Image
 
 
-def full_gen_layer():
-    """
-    oversees the generator creation
-    :param params:
-    :param full_img:
-    :param mask:
-    :param erased_image:
-    :param global_shape:
-    :return:
-    """
-    # view our net
-    gen_model = model_generator()
-
-    # model_gen = Model(inputs=in_layer, outputs=gen_model, name='Gener8tor')
-
-    # # pass in the erased_image as input
-    # gen_model = gen_model(erased_image)
-
-    # gen_brain = Model(inputs=[full_img, mask, erased_image], outputs=gen_model)
-
-    # if params.verbosity == 'INFO':
-    #     print(gen_model)
-    #     print(gen_model)
-    #     print(gen_brain)
-    #     # view_models(gen_brain, '../summaries/gen_brain.png')
-    #     gen_brain.summary()
-
-    return gen_model
-
 
 def model_generator():
     """
@@ -226,9 +197,11 @@ class ModelManager(Model):
         # erased_img = tfe.Variable(global_image_tensor)
         # mask = tfe.Variable((global_image_tensor[0], global_image_tensor[1], 1))
 
-        self.gen_model = full_gen_layer()
+        self.gen_model = model_generator()
 
-        self.x_l, self.x_g = model_discriminator()
+        self.disc_model_local, self.disc_model_global = model_discriminator()
+
+        self.disc_model_combined = None
 
         # x = Concatenate(axis=1)([x_l, x_g])
         # x = Dense(1, activation='sigmoid')(x)
@@ -245,7 +218,7 @@ class ModelManager(Model):
         #     disc_brain.summary()
         #     # view_models(disc_brain, '../summaries/disc_brain.png')
 
-    def predict(self, img):
+    def predict_gen(self, img):
         """
         predict the generator on a given image
         :param erased_imgs:
@@ -256,7 +229,7 @@ class ModelManager(Model):
 
         return generated_img
 
-    def train_disc(self, imgs, labels):
+    def train_disc(self, imgs, masks, labels):
         """
         we kinda need to create it on the fly also
         :param imgs:
@@ -265,26 +238,25 @@ class ModelManager(Model):
         """
         # we need to make the model on the fly i think ....
         # we need to call both x_l and x_g ....
-        pdb.set_trace()
         # this part is fucked
-        xl_output = self.x_l(imgs)
-        xg_output = self.x_g(imgs)
-        output = Concatenate()([xl_output, xg_output])
+        xl_output = self.disc_model_local(masks)
+        xg_output = self.disc_model_global(imgs)
+        output = tf.keras.layers.concatenate([xl_output, xg_output])
         output = Dense(1, activation='sigmoid')(output)
+        output = tf.cast(output, dtype=tf.float32)
+        self.disc_model_combined = tf.keras.Model(output)
 
         with tf.GradientTape() as tape:
-            pdb.set_trace()
-            logits = self.output(imgs, training=True)
-            loss_value = tf.losses.mean_squared_error(labels, logits)
+            loss_value = tf.losses.mean_squared_error(labels, output)
 
         self.disc_loss_history.append(loss_value.numpy())
-        grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
-        self.disc_optimizer.apply_gradients(
-            zip(
-                grads,
-                self.disc_model.trainable_variables
-            ), global_step=tf.train.get_or_create_global_step()
-        )
+        # grads = tape.gradient(loss_value, self.disc_model_combined.trainable_variables)  # this takes a long time on cpu
+        # self.disc_optimizer.apply_gradients(
+        #     zip(
+        #         grads,
+        #         self.disc_model_combined.trainable_variables
+        #     ), global_step=tf.train.get_or_create_global_step()
+        # )
 
         return loss_value
 
@@ -295,8 +267,8 @@ class ModelManager(Model):
         """
 
         with tf.GradientTape() as tape:
-            logits = self.gen_model(imgs, training=True)
-            loss_value = tf.losses.mean_squared_error(labels, logits)
+            predicted = self.gen_model(imgs, training=True)
+            loss_value = tf.losses.mean_squared_error(labels, predicted)
 
         self.gen_loss_history.append(loss_value.numpy())
         grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
@@ -316,7 +288,7 @@ class ModelManager(Model):
         dreamt_image = None
         # g_epochs = int(self.params.num_epochs * 0.18)
         # d_epochs = int(self.params.num_epochs * 0.02)
-        g_epochs = 1
+        g_epochs = 0
         d_epochs = 1
         for epoch in range(self.params.num_epochs):
             print('\nstarting epoch {}\n'.format(epoch))
@@ -327,7 +299,7 @@ class ModelManager(Model):
                 masks = tf.cast(masks, tf.float32)
                 erased_imgs = tf.math.multiply(images, tf.math.subtract(tf.constant(1, dtype=tf.float32), masks))
                 # generate predictions on the erased images
-                generated_imgs = self.predict(erased_imgs)
+                generated_imgs = self.predict_gen(erased_imgs)
 
                 # generate the labels
                 valid = np.ones((self.params.train_batch_size, 1))
@@ -349,8 +321,8 @@ class ModelManager(Model):
 
                     # not fixed yet
                     # print('warn not yet implemented disc')
-                    d_loss_real = self.train_disc(images, valid)
-                    d_loss_fake = self.train_disc(generated_imgs, fake)
+                    d_loss_real = self.train_disc(images, masks, valid)
+                    d_loss_fake = self.train_disc(generated_imgs, masks, fake)
 
                     # # throw in real unedited images with label VALID
                     # d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
@@ -361,12 +333,14 @@ class ModelManager(Model):
                     d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
-                        g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
+                        pdb.set_trace()
+                        g_loss = self.disc_model_combined(generated_imgs, masks, fake)
+                        # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
                         # and update the generator loss
                         g_loss = g_loss[0] + self.params.alpha * g_loss[1]
                 # progress bar visualization (comment out in ML Engine)
                 # NOTE - d_loss is not .numpy() fied yet - WARN !!!!!!!!!!!!!!!
-                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss), ("Gen mse: ", g_loss.numpy())])
+                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss), ("Gen Loss: ", g_loss)])
                 batch_count += 1
 
             # clean this up ......... !!! !!!! !!!!! ! ! !! ! ! !! !!! ! ! !!
@@ -396,14 +370,14 @@ class ModelManager(Model):
     #     # but first we want a predicted image
     #     #
     #     erased_img = input * mask
-    #     generated_img = self.predict(erased_img)
+    #     generated_img = self.predict_gen(erased_img)
     #
     #
     #     # run the original image through
     #     # first we need to get the loss of the disc
     #     # but we need to create it first:
-    #     result_xl = self.x_l(input)
-    #     result_xg = self.x_g(input)
+    #     result_xl = self.disc_model_local(input)
+    #     result_xg = self.disc_model_global(input)
     #     # concatenate it
     #     result_disc = Concatenate(axis=1)([result_xl, result_xg])
     #     result_orig = Dense(1, activation='sigmoid')(result_disc)
@@ -472,31 +446,31 @@ class ModelManager(Model):
     #     # we might as well compile here - so just by initializing the class the GAN is completely ready to go
     #     self.compile()
 
-    def compile(self):
-        """
-        compiles the generator brain and the brain itself ... ?
-
-        ..later we can make it compile each one seperately if we want
-        :return:
-        """
-        print('compilling hater')
-        self.disc_brain.compile(
-            loss=self.params.disc_loss,
-            optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
-        )
-        # optimizer=optimizers.Adadelta(lr=0.01))
-        print('compilling generator')
-        self.gen_brain.compile(
-            loss=self.params.gen_loss,
-            optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
-            # optimizer=optimizers.Adadelta(lr=0.001)
-        )
-        print('compilling brain ---- note some hardcodded loss up in here')
-        self.brain.compile(
-            loss=['mse', 'binary_crossentropy'],
-            loss_weights=[1.0, self.params.alpha],
-            optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
-        )
+    # def compile(self):
+    #     """
+    #     compiles the generator brain and the brain itself ... ?
+    #
+    #     ..later we can make it compile each one seperately if we want
+    #     :return:
+    #     """
+    #     print('compilling hater')
+    #     self.disc_brain.compile(
+    #         loss=self.params.disc_loss,
+    #         optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
+    #     )
+    #     # optimizer=optimizers.Adadelta(lr=0.01))
+    #     print('compilling generator')
+    #     self.gen_brain.compile(
+    #         loss=self.params.gen_loss,
+    #         optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
+    #         # optimizer=optimizers.Adadelta(lr=0.001)
+    #     )
+    #     print('compilling brain ---- note some hardcodded loss up in here')
+    #     self.brain.compile(
+    #         loss=['mse', 'binary_crossentropy'],
+    #         loss_weights=[1.0, self.params.alpha],
+    #         optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
+    #     )
 
     def describe(self):
         """
