@@ -174,6 +174,18 @@ def model_discriminator():
     return x_l, x_g
 
 
+class DiscConnected(Model):
+    def __init__(self):
+        super(DiscConnected, self).__init__()
+        self.disc_model_local, self.disc_model_global = model_discriminator()
+
+    def call(self, inputs, masks, training=False):
+        # x = tf.keras.cont(inputs)
+        x = tf.concat([self.disc_model_local(masks), self.disc_model_global(inputs)], 0)
+        x = Dense(1, activation='sigmoid')(x)
+        return x
+
+
 class ModelManager(Model):
     """
     this class basically just holds the GAN ... later we can build out more functionality like train, predict etc...
@@ -239,24 +251,29 @@ class ModelManager(Model):
         # we need to make the model on the fly i think ....
         # we need to call both x_l and x_g ....
         # this part is fucked
-        xl_output = self.disc_model_local(masks)
-        xg_output = self.disc_model_global(imgs)
-        output = tf.keras.layers.concatenate([xl_output, xg_output])
-        output = Dense(1, activation='sigmoid')(output)
-        output = tf.cast(output, dtype=tf.float32)
-        self.disc_model_combined = tf.keras.Model(output)
+        # xl_output = self.disc_model_local(masks)
+        # xg_output = self.disc_model_global(imgs)
+        # output = tf.keras.layers.concatenate([xl_output, xg_output])
+        # output = Dense(1, activation='sigmoid')(output)
+        # output = tf.cast(output, dtype=tf.float32)
+        # pdb.set_trace()
+        self.disc_model = DiscConnected()
+
+        # self.disc_model_combined = tf.keras.Model(output)
+        # self.disc_model_combined = keras.models.Model(self.disc_model_local, self.disc_model_global)
 
         with tf.GradientTape() as tape:
+            output = self.disc_model(imgs, masks)
             loss_value = tf.losses.mean_squared_error(labels, output)
 
         self.disc_loss_history.append(loss_value.numpy())
-        # grads = tape.gradient(loss_value, self.disc_model_combined.trainable_variables)  # this takes a long time on cpu
-        # self.disc_optimizer.apply_gradients(
-        #     zip(
-        #         grads,
-        #         self.disc_model_combined.trainable_variables
-        #     ), global_step=tf.train.get_or_create_global_step()
-        # )
+        grads = tape.gradient(loss_value, self.disc_model_combined.trainable_variables)  # this takes a long time on cpu
+        self.disc_optimizer.apply_gradients(
+            zip(
+                grads,
+                self.disc_model.trainable_variables
+            ), global_step=tf.train.get_or_create_global_step()
+        )
 
         return loss_value
 
