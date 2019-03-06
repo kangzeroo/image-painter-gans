@@ -10,9 +10,9 @@ from PIL import Image
 from os.path import join as jp
 
 try:
-    from utils import save_img
+    from utils import save_img, extract_roi_imgs
 except Exception as e:
-    from trainer.utils import save_img
+    from trainer.utils import save_img, extract_roi_imgs
 
 
 # hardcoded..... lets put this in a config along with other shit later on
@@ -318,7 +318,7 @@ class ModelManager(Model):
 
         return loss_value
 
-    def train_full_brain(self, erased_imgs, images, roi_imgs, valid):
+    def train_full_brain(self, erased_imgs, images, points, valid):
         """
         trains the entire brain (i.e. gen + disc). can make probably write this more general and combine the other 2 training methods....
 
@@ -351,9 +351,11 @@ class ModelManager(Model):
             global_step=self.gen_gs
         )
 
+        # get the roi of the generator output
+        roi_imgs_gen = extract_roi_imgs(output_gen, points)
         # now lets teach the discriminator...
         with tf.GradientTape() as tape:
-            output_disc = self.disc_model.call(images, roi_imgs)
+            output_disc = self.disc_model.call(output_gen, roi_imgs_gen)
             loss_value_disc = tf.losses.sigmoid_cross_entropy(   # we use simoid_cross_entropy in replace of keras' binary cross entropy
                 valid,
                 output_disc,
@@ -405,19 +407,6 @@ class ModelManager(Model):
                 # encompasses the entire mask. Note all rectangles are the same size. we use "points" defined in the
                 # generator to create such images. then cast it to a tensor
                 # size [bs, local_shape[0], local_shape[1], channels]
-                roi_imgs = tf.cast(
-                    [
-                        tf.image.crop_to_bounding_box(
-                            a,
-                            offset_height=b[1],
-                            offset_width=b[0],
-                            target_height=b[3] - b[1],
-                            target_width=b[2] - b[0]
-                        )
-                        for a, b in zip(images, points)
-                    ],
-                    tf.float32
-                )
 
                 # generate predictions on the erased images
                 generated_imgs = self.predict_gen(erased_imgs)
@@ -443,6 +432,7 @@ class ModelManager(Model):
                     # not fixed yet
                     # print('warn not yet implemented disc')
                     # cropped_imgs = tf.image.crop_to_
+                    roi_imgs = extract_roi_imgs(images, points)
                     d_loss_real = self.train_disc(images, roi_imgs, valid)
                     d_loss_fake = self.train_disc(generated_imgs, roi_imgs, fake)
 
@@ -454,7 +444,7 @@ class ModelManager(Model):
                     d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
-                        g_loss = self.train_full_brain(erased_imgs, images, roi_imgs, valid)
+                        g_loss = self.train_full_brain(erased_imgs, images, points, valid)
                         # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
 
                 # progress bar visualization (comment out in ML Engine)

@@ -1,6 +1,24 @@
+import tensorflow as tf
 from tensorflow.python.lib.io import file_io
 from keras.utils import plot_model
 # import pdb  # for debug
+
+
+def extract_roi_imgs(images, points):
+    roi_imgs = tf.cast(
+        [
+            tf.image.crop_to_bounding_box(
+                a,
+                offset_height=b[1],
+                offset_width=b[0],
+                target_height=b[3] - b[1],
+                target_width=b[2] - b[0]
+            )
+            for a, b in zip(images, points)
+        ],
+        tf.float32
+    )
+    return roi_imgs
 
 
 def view_models(model, filename):
