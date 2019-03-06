@@ -12,7 +12,6 @@ from PIL import Image
 
 try:
     from utils import save_img
-
 except Exception as e:
     from trainer.utils import save_img
 

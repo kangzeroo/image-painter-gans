@@ -3,21 +3,6 @@ from keras.utils import plot_model
 # import pdb  # for debug
 
 
-
-def save_img(save_path, img_data):
-
-    """
-    save an image to the save_path
-    :param save_path: str path - to save destination
-    :param img_data: img pil - img to be saved
-    :return:
-    """
-
-    with file_io.FileIO(save_path, 'wb') as f:
-        print('\nsaving image at {}\n'.format(save_path))
-        img_data.save(f, "PNG")
-
-
 def view_models(model, filename):
     """
     causes a crash... with pyplot in gc - could probably just add to setup...
@@ -50,7 +35,8 @@ def save_img(save_path, img_data):
     :param img_data: img pil - img to be saved
     :return:
     """
-
+    # NOTE -- if the file directly after the bucket is not created (i.e. theos_jobs) initially,
+    # this throws an error - carefull baby
     with file_io.FileIO(save_path, 'wb') as f:
         print('\nsaving image at {}\n'.format(save_path))
         img_data.save(f, "PNG")
