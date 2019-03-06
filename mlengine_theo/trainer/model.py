@@ -4,12 +4,17 @@ from tensorflow.keras.layers import BatchNormalization
 import tensorflow.contrib.eager as tfe
 from tensorflow.keras.models import Model
 import tensorflow.train as optimizers
-import tensorflow.keras.backend as K  # there is a odd warning here - BEWARNED
+import tensorflow.keras.backend as k
 from keras.utils import generic_utils
 import pdb  # for debugging
 import numpy as np
 from PIL import Image
 
+try:
+    from utils import save_img
+
+except Exception as e:
+    from trainer.utils import save_img
 
 
 def model_generator():
@@ -90,7 +95,7 @@ def model_generator():
         BatchNormalization(),
         Activation('sigmoid'),
         Conv2D(3, kernel_size=3, strides=1,
-                       padding='same', dilation_rate=(1, 1)),
+               padding='same', dilation_rate=(1, 1)),
         BatchNormalization(),
         Activation('sigmoid')
     ])
@@ -160,18 +165,28 @@ def model_discriminator():
         Flatten(),
         Dense(1024, activation='relu')
     ])
-    # pdb.set_trace()
-    # disc_model = tf.keras.Model([
-    #     Concatenate(axis=1)([x_l, x_g]),
-    #     Dense(1, activation='sigmoid')
-    # ])
 
-
-    # x = Concatenate(axis=1)([x_l, x_g])
-    # x = Dense(1, activation='sigmoid')(x)
-
-    # model_disc = Model(inputs=[g_img, in_pts], outputs=x, name='Discimi-hater')
     return x_l, x_g
+
+# # i thought maybe we would train the whole gan by making another model class.... but settled to do it on the individual
+# # models instead ...
+#
+# class FullGAN(Model):
+#     def __init__(self, disc_model, generator_model):
+#         super(FullGAN, self).__init__()
+#         self.disc_model, self.generator_model = disc_model, generator_model
+#
+#     def call(self, erased_imgs, roi_imgs):
+#         """
+#         we put the generator and the discriminator together and train the hole ting babygirl
+#         :param imgs: tensor of images --- typically output from generator
+#         :param cropped_imgs: the generated images by mask......
+#         :return:
+#         """
+#         x_gen = self.generator_model(erased_imgs)
+#         x_disc = self.disc_model(x_gen, roi_imgs)
+#
+#         return x_gen, x_disc
 
 
 class DiscConnected(Model):
@@ -179,51 +194,47 @@ class DiscConnected(Model):
         super(DiscConnected, self).__init__()
         self.disc_model_local, self.disc_model_global = model_discriminator()
 
-    def call(self, inputs, masks, training=False):
+    def call(self, inputs, cropped_imgs, training=False):
         # x = tf.keras.cont(inputs)
-        x = tf.concat([self.disc_model_local(masks), self.disc_model_global(inputs)], axis=1)
+        x = tf.concat([self.disc_model_local(cropped_imgs), self.disc_model_global(inputs)], axis=1)
         x = Dense(1, activation='sigmoid')(x)
         return x
 
 
 class ModelManager(Model):
     """
-    this class basically just holds the GAN ... later we can build out more functionality like train, predict etc...
+
+    this class holds all the components for the GAN and all the methods you'd want baby.
+
+    Made up of:
+        generator - generates images
+        discriminator - local and global branches
+
     """
     def __init__(
         self,
         params,
-        global_image_tensor,
-        local_image_tensor,
     ):
         """
-        manage the gan. we construct the GAN on initialization.......
+        manage the gan. we construct the discriminator and generator on initialization....... Note, these are not "compiled"
+        yet, since we are using eager, they only get compiled when called
         :param params: DICT - from argparser
         """
         super(ModelManager, self).__init__()
         self.params = params
-        self.gen_loss_history, self.disc_loss_history = [], []
+        self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
         self.gen_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
         self.disc_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
+        # self.brain_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
 
-        # erased_img = tfe.Variable(global_image_tensor)
-        # mask = tfe.Variable((global_image_tensor[0], global_image_tensor[1], 1))
-
+        # this is the generator model
         self.gen_model = model_generator()
 
-        self.disc_model_local, self.disc_model_global = model_discriminator()
+        # full discriminator (i.e. global + local branch)
+        self.disc_model = DiscConnected()
 
-        self.disc_model_combined = None
-
-        # x = Concatenate(axis=1)([x_l, x_g])
-        # x = Dense(1, activation='sigmoid')(x)
-
-        # model_disc = Model(inputs=[g_img, in_pts], outputs=x, name='Discimi-hater')
-
-        # disc_model = disc_model([full_img, clip_coords])
-        # disc_model
-
-        # disc_brain = Model(inputs=[full_img, clip_coords], outputs=disc_model)
+        # this is the full brain (generator + discriminator)
+        # self.full_brain = FullGAN(disc_model=self.disc_model, generator_model=self.gen_model)
 
         # if params.verbosity == 'INFO':
         #     print(disc_model)
@@ -241,31 +252,18 @@ class ModelManager(Model):
 
         return generated_img
 
-    def train_disc(self, imgs, masks, labels):
+    def train_disc(self, imgs, masked_imgs, labels):
         """
         we kinda need to create it on the fly also
         :param imgs:
+        :param masked_imgs:
         :param labels:
         :return:
         """
-        # we need to make the model on the fly i think ....
-        # we need to call both x_l and x_g ....
-        # this part is fucked
-        # xl_output = self.disc_model_local(masks)
-        # xg_output = self.disc_model_global(imgs)
-        # output = tf.keras.layers.concatenate([xl_output, xg_output])
-        # output = Dense(1, activation='sigmoid')(output)
-        # output = tf.cast(output, dtype=tf.float32)
-        # pdb.set_trace()
-        self.disc_model = DiscConnected()
-
-        # self.disc_model_combined = tf.keras.Model(output)
-        # self.disc_model_combined = keras.models.Model(self.disc_model_local, self.disc_model_global)
 
         with tf.GradientTape() as tape:
-            output = self.disc_model(imgs, masks)
-            # pdb.set_trace()
-            loss_value = tf.losses.mean_squared_error(labels, output)
+            output = self.disc_model.call(imgs, masked_imgs)
+            loss_value = tf.losses.sigmoid_cross_entropy(labels, output)  # we use simoid_cross_entropy in replace of keras' binary cross entropy
 
         self.disc_loss_history.append(loss_value.numpy())
         grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
@@ -273,10 +271,64 @@ class ModelManager(Model):
             zip(
                 grads,
                 self.disc_model.trainable_variables
-            ), global_step=tf.train.get_or_create_global_step()
+            ),
+            global_step=tf.train.get_or_create_global_step()
         )
 
         return loss_value
+
+    def train_full_brain(self, erased_imgs, images, roi_imgs, valid):
+        """
+        trains the entire brain (i.e. gen + disc). can make probably write this more general and combine the other 2 training methods....
+        :param erased_imgs:
+        :param images:
+        :param roi_imgs:
+        :param valid:
+        :return:
+        """
+        with tf.GradientTape() as tape:
+            # output_gen, output_disc = self.full_brain.call(erased_imgs, roi_imgs)
+            output_gen = self.gen_model(erased_imgs)
+            loss_value_gen = tf.losses.mean_squared_error(
+                images,
+                output_gen,
+                weights=1.0
+            )
+
+        # im not sure how to fully train the entire model....
+        # we will first just try to train the generator then the discriminator....
+        # train the generator
+        grads_gen = tape.gradient(loss_value_gen, self.gen_model.trainable_variables)
+        self.gen_optimizer.apply_gradients(
+            zip(
+                grads_gen,
+                self.gen_model.trainable_variables,
+            ),
+            global_step=tf.train.get_or_create_global_step()
+        )
+
+        # now lets teach the discriminator...
+        with tf.GradientTape() as tape:
+            output_disc = self.disc_model.call(images, roi_imgs)
+            loss_value_disc = tf.losses.sigmoid_cross_entropy(   # we use simoid_cross_entropy in replace of keras' binary cross entropy
+                valid,
+                output_disc,
+                weights=self.params.alpha
+            )
+
+        grads_disc = tape.gradient(loss_value_disc, self.disc_model.trainable_variables)
+
+        self.disc_optimizer.apply_gradients(
+            zip(
+                grads_disc,
+                self.disc_model.trainable_variables,
+            ),
+            global_step=tf.train.get_or_create_global_step()
+        )
+
+        loss = (1 / 2) * (loss_value_gen.numpy() + loss_value_disc.numpy())
+        self.brain_history.append(loss)
+        return loss
 
     def train_gen(self, imgs, labels):
         """
@@ -299,23 +351,47 @@ class ModelManager(Model):
 
         return loss_value
 
-    def train(self, data_gen):
+    def run_training_procedure(self, data_gen):
         # data generator
         batch_count = 0
         # train over time
-        dreamt_image = None
         # g_epochs = int(self.params.num_epochs * 0.18)
         # d_epochs = int(self.params.num_epochs * 0.02)
-        g_epochs = 0
-        d_epochs = 1
+        g_epochs = 2
+        d_epochs = 2
         for epoch in range(self.params.num_epochs):
             print('\nstarting epoch {}\n'.format(epoch))
             # progress bar visualization (comment out in ML Engine)
             progbar = generic_utils.Progbar(len(data_gen))
-            for images, points, masks in data_gen.flow(batch_size=self.params.train_batch_size):
+            for images, masks, points in data_gen.flow(batch_size=self.params.train_batch_size):
+
+                # batch of images made into a tensor size [batch_size, im_dim_x, im_dim_y, channel)
                 images = tf.cast(images, tf.float32)
+
+                # this is the masks in zeros and ones made into a tensor these are [bs, randomx, randomy, 1] shape
                 masks = tf.cast(masks, tf.float32)
+
+                # these are the images with the patches blacked out (i.e. set to zero) - same size as images
                 erased_imgs = tf.math.multiply(images, tf.math.subtract(tf.constant(1, dtype=tf.float32), masks))
+
+                # we create the "roi_imgs" which are the images times a rectange of size self.local_shape which
+                # encompasses the entire mask. Note all rectangles are the same size. we use "points" defined in the
+                # generator to create such images. then cast it to a tensor
+                # size [bs, local_shape[0], local_shape[1], channels]
+                roi_imgs = tf.cast(
+                    [
+                        tf.image.crop_to_bounding_box(
+                            a,
+                            offset_height=b[1],
+                            offset_width=b[0],
+                            target_height=b[3] - b[1],
+                            target_width=b[2] - b[0]
+                        )
+                        for a, b in zip(images, points)
+                    ],
+                    tf.float32
+                )
+
                 # generate predictions on the erased images
                 generated_imgs = self.predict_gen(erased_imgs)
 
@@ -339,36 +415,32 @@ class ModelManager(Model):
 
                     # not fixed yet
                     # print('warn not yet implemented disc')
-                    d_loss_real = self.train_disc(images, masks, valid)
-                    d_loss_fake = self.train_disc(generated_imgs, masks, fake)
+                    # cropped_imgs = tf.image.crop_to_
+                    d_loss_real = self.train_disc(images, roi_imgs, valid)
+                    d_loss_fake = self.train_disc(generated_imgs, roi_imgs, fake)
 
                     # # throw in real unedited images with label VALID
                     # d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
                     # # throw in A.I. generated images with label FAKE
                     # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
                     # # combine and set the disc loss
-                    pdb.set_trace()
                     d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
-                        # pdb.set_trace()
-                        g_loss = self.train_gen(generated_imgs, masks, fake)
+                        g_loss = self.train_full_brain(erased_imgs, images, roi_imgs, valid)
                         # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
-                        # and update the generator loss
-                        g_loss = g_loss[0] + self.params.alpha * g_loss[1]
+
                 # progress bar visualization (comment out in ML Engine)
                 # NOTE - d_loss is not .numpy() fied yet - WARN !!!!!!!!!!!!!!!
                 progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss), ("Gen Loss: ", g_loss)])
                 batch_count += 1
 
-            # clean this up ......... !!! !!!! !!!!! ! ! !! ! ! !! !!! ! ! !!
             # gen_brain.save(f"./outputs/models/batch_{batch_count}_generator.h5")
             # disc_brain.save(f"./outputs/models/batch_{batch_count}discriminator.h5")
             if epoch % self.params.epoch_save_frequency == 0 and epoch > 0:
                 # save the generated image
                 last_img = generated_imgs[0]
                 last_img *= 255
-                pdb.set_trace()
                 dreamt_image = Image.fromarray(np.asarray(last_img, dtype='uint8'), 'RGB')
                 if dreamt_image is not None:
                     output_image_path = 'gs://{}/{}/images/epoch_{}_image.png'.format(
@@ -376,133 +448,3 @@ class ModelManager(Model):
                         self.params.job_dir, epoch
                     )
                     save_img(save_path=output_image_path, img_data=dreamt_image)
-
-    # def call(self, input, points, mask):
-    #     """
-    #     run / connect the model on the fly
-    #     assume just one image, mask etc now...
-    #     :param input: batch of inputs????? right now assumed one image
-    #     :return:
-    #     """
-    #     # we basically connect everything here on the fly it would seem?
-    #     # but first we want a predicted image
-    #     #
-    #     erased_img = input * mask
-    #     generated_img = self.predict_gen(erased_img)
-    #
-    #
-    #     # run the original image through
-    #     # first we need to get the loss of the disc
-    #     # but we need to create it first:
-    #     result_xl = self.disc_model_local(input)
-    #     result_xg = self.disc_model_global(input)
-    #     # concatenate it
-    #     result_disc = Concatenate(axis=1)([result_xl, result_xg])
-    #     result_orig = Dense(1, activation='sigmoid')(result_disc)
-    #
-    #     # now maybe the mask
-    #
-    #
-    #
-    #     # OKKKKKKAY
-    #     # disc_brain = Model(inputs=[full_img, clip_coords], outputs=disc_model)
-    #     # now get the losss
-    #
-    #
-    #
-    #
-    #
-    #
-    #         # throw in real unedited images with label VALID
-    #         d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
-    #         # throw in A.I. generated images with label FAKE
-    #         d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
-    #         # combine and set the disc loss
-    #         d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-    #         if epoch >= g_epochs + d_epochs:
-    #             # train the entire brain
-    #             g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
-    #             # and update the generator loss
-    #             g_loss = g_loss[0] + self.params.alpha * g_loss[1]
-    #     # progress bar visualization (comment out in ML Engine)
-    #     progbar.add(images.shape[0], values=[("Disc Loss: ", d_loss), ("Gen mse: ", g_loss)])
-    #     batch_count += 1
-    #     # save the generated image
-    #     last_img = generated_img[0]
-    #     last_img *= 255
-    #     dreamt_image = Image.fromarray(last_img.astype('uint8'), 'RGB')
-    #
-    #
-    #
-    #
-    #
-    #     result = self.dense1(input)
-    #     result = self.dense2(result)
-    #     result = self.dense2(result)  # reuse variables from dense2 layer
-    #     return result
-    #
-    #
-    #     # old
-    #     # self.disc_brain, self.disc_model = full_disc_layer(
-    #     #     params=params,
-    #     #     global_image_tensor=global_image_tensor,
-    #     #     local_image_tensor=local_image_tensor,
-    #     #     full_img=full_img,
-    #     #     clip_coords=clip_coords)
-    #
-    #     # the final brain
-    #     self.disc_model.trainable = False
-    #     self.connected_disc = Model(inputs=[full_img, clip_coords], outputs=self.disc_model, name='Connected-Discrimi-Hater')
-    #
-    #     self.brain = Model(
-    #         inputs=[full_img, mask, erased_img, clip_coords],
-    #         outputs=[
-    #             self.gen_model,
-    #             self.connected_disc([self.gen_model, clip_coords])
-    #         ]
-    #     )
-    #     # we might as well compile here - so just by initializing the class the GAN is completely ready to go
-    #     self.compile()
-
-    # def compile(self):
-    #     """
-    #     compiles the generator brain and the brain itself ... ?
-    #
-    #     ..later we can make it compile each one seperately if we want
-    #     :return:
-    #     """
-    #     print('compilling hater')
-    #     self.disc_brain.compile(
-    #         loss=self.params.disc_loss,
-    #         optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
-    #     )
-    #     # optimizer=optimizers.Adadelta(lr=0.01))
-    #     print('compilling generator')
-    #     self.gen_brain.compile(
-    #         loss=self.params.gen_loss,
-    #         optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
-    #         # optimizer=optimizers.Adadelta(lr=0.001)
-    #     )
-    #     print('compilling brain ---- note some hardcodded loss up in here')
-    #     self.brain.compile(
-    #         loss=['mse', 'binary_crossentropy'],
-    #         loss_weights=[1.0, self.params.alpha],
-    #         optimizer=getattr(optimizers, self.params.optimizer)(learning_rate=self.params.learning_rate)
-    #     )
-
-    def describe(self):
-        """
-        describe your gan ?
-        :return:
-        """
-        if self.params.verbosity == 'INFO':
-            print(self.gen_brain)
-            print(self.disc_brain)
-
-            print(self.gen_model)
-            print(self.disc_model)
-            print(self.connected_disc)
-            self.brain.summary()
-            # view_models(brain, '../summaries/brain.png')
-
-    # def train(self):

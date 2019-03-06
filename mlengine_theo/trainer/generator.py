@@ -5,11 +5,10 @@ from PIL import Image
 import cv2
 import pdb
 
-# this throws error in my editor.................
 from google.cloud import storage
 from google import auth
 
-
+# might want to throw this in a config file
 creds, _ = auth.default()
 client = storage.Client()
 bucket = client.bucket('lsun-roomsets')
@@ -41,8 +40,8 @@ class DataGenerator(object):
         self.reset()
         self.img_file_list = []
         self.images = []
-        self.points = []
         self.masks = []
+        self.points = []
         # for now we get max self.count photos and add them to self.img_file_list
         for img_cnt, blob in enumerate(bucket.list_blobs(prefix=input_dir)):
             self.img_file_list.append(blob.name)
@@ -56,8 +55,8 @@ class DataGenerator(object):
     def reset(self):
         # we also track the preprocessed images, points, and masks
         self.images = []
-        self.points = []
         self.masks = []
+        self.points = []
 
     def flow(self, batch_size, hole_min=64, hole_max=128):
         """
@@ -91,6 +90,7 @@ class DataGenerator(object):
                 y1 = np.random.randint(0, self.image_size[1] - self.local_size[1] + 1)
                 x2, y2 = np.array([x1, y1]) + np.array(self.local_size)
                 self.points.append([x1, y1, x2, y2])
+
                 # and we also randomly generate width and height of those masks
                 w, h = np.random.randint(hole_min, hole_max, 2)
                 p1 = x1 + np.random.randint(0, self.local_size[0] - w)
@@ -107,11 +107,11 @@ class DataGenerator(object):
                 # yeild the batch of data when batch size reached
                 if len(self.images) == batch_size:
                     images = np.asarray([a / 255 for a in self.images])
-                    points = self.points
                     masks = self.masks
+                    points = self.points
                     self.reset()
                     # dataset = tf.data.Dataset.from_tensor_slices(
                     #     (tf.cast(mnist_images[..., tf.newaxis] / 255, tf.float32),
                     #      tf.cast(mnist_labels, tf.int64)))
                     # dataset = dataset.shuffle(1000).batch(32)
-                    yield images, points, masks
+                    yield images, masks, points
