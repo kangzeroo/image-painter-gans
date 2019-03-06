@@ -1,11 +1,10 @@
-import numpy as np
 import argparse
 import tensorflow as tf
 import os
 from datetime import datetime
-from keras.utils import generic_utils
-from PIL import Image
-# import pdb  # run debugging from command
+
+# enable eager execution......
+# QUESTION - do we need to call this in model.py also for example???
 tf.enable_eager_execution()
 tf.executing_eagerly()
 
@@ -47,7 +46,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20)
+        default=2  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -87,7 +86,7 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--staging-bucketname',
-        default="t_job",
+        default="theos_jobs",
         type=str,
     )
     args_parser.add_argument(
@@ -98,23 +97,24 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="output_BEEFY_eager",
+        default="output_test_ckpt",
         type=str,
     )
     args_parser.add_argument(
         '--img-dir',
         # default="gs://temp/outputs",
-        default="images/bedroom_val",
+        default="images/bedroom_train",
         type=str,
     )
     args_parser.add_argument(
-        '--reuse-job-dir',
-        action='store_true',
+        '--load-ckpt',
         default=False,
+        type=bool,
         help="""\
-            Flag to decide if the model checkpoint should
-            be re-used from the job-dir. If False then the
-            job-dir will be deleted"""
+            True or False specifying if to load the checkpoint
+            file. If True, loads the highest epoch found in the
+            ckpt folder in the output dir. If False, goes along
+            as normal without loading any checkpoint"""
     )
     args_parser.add_argument(
         '--optimizer',
@@ -135,7 +135,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=None,
+        default=2,
         type=int
     )
     # Argument to turn on all logging
@@ -187,31 +187,6 @@ class Trainer:
 
         # Set C++ Graph Execution level verbosity  ------- dont know what this is
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[self.params.verbosity] / 10)
-
-        # Directory to store output model and checkpoints
-        model_dir = self.params.job_dir
-
-        # If job_dir_reuse is False then remove the job_dir if it exists
-        print("Resume training:", self.params.reuse_job_dir)
-        if not self.params.reuse_job_dir:
-            if tf.gfile.Exists(model_dir):
-                tf.gfile.DeleteRecursively(model_dir)
-                print("Deleted job_dir {} to avoid re-use".format(model_dir))
-            else:
-                print("No job_dir available to delete")
-        else:
-            print("Reusing job_dir {} if it exists".format(model_dir))
-
-        # NOTE ---- i dont know what run_config does currently...
-        self.run_config = tf.estimator.RunConfig(
-            tf_random_seed=19830610,
-            log_step_count_steps=1000,
-            save_checkpoints_secs=120,  # change if you want to change frequency of saving checkpoints
-            keep_checkpoint_max=3,
-            model_dir=model_dir
-        )
-        run_config = self.run_config.replace(model_dir=model_dir)
-        print("Model Directory:", run_config.model_dir)
 
         # finally initialize the data generator
         self.train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])

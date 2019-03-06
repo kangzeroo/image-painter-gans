@@ -32,9 +32,8 @@ class DataGenerator(object):
         :param local_size: tuple/list (2 elements xy) -
             all images.
         """
-        input_dir = params.img_dir
-        max_img_cnt = params.max_img_cnt
         self.params = params
+        self.max_img_cnt = self.params.max_img_cnt
         self.image_size = image_size
         self.local_size = local_size
         self.reset()
@@ -42,12 +41,6 @@ class DataGenerator(object):
         self.images = []
         self.masks = []
         self.points = []
-        # for now we get max self.count photos and add them to self.img_file_list
-        for img_cnt, blob in enumerate(bucket.list_blobs(prefix=input_dir)):
-            self.img_file_list.append(blob.name)
-            if max_img_cnt and img_cnt >= max_img_cnt:
-                print('max image count of {} reached... breaking'.format(max_img_cnt))
-                break
 
     def __len__(self):
         return len(self.img_file_list)
@@ -66,10 +59,13 @@ class DataGenerator(object):
         :param hole_max: INT -
         :return:
         """
-        np.random.shuffle(self.img_file_list)
-        for idx, img_url in enumerate(self.img_file_list):
-            # we use tf...file_io.FileIO to grab the file
-            # print('{}/{}'.format(HYPER_PARAMS.bucketname, img_url))
+        # for now we get max self.count photos and add them to self.img_file_list
+        for img_cnt, blob in enumerate(bucket.list_blobs(prefix=self.params.img_dir)):
+            np.random.shuffle(self.img_file_list)
+            if self.max_img_cnt and img_cnt >= self.max_img_cnt:
+                print('max image count of {} reached... breaking'.format(self.max_img_cnt))
+                break
+            img_url = blob.name
             with file_io.FileIO('gs://{}/{}'.format(self.params.bucketname, img_url), 'rb') as f:
                 # and use PIL to convert into an RGB image
                 img = Image.open(f).convert('RGB')

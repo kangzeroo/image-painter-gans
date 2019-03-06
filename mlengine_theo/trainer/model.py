@@ -1,19 +1,23 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Concatenate, Reshape, Lambda, Flatten, Activation, Conv2D, Conv2DTranspose, Dense, Subtract, Add, Multiply
-from tensorflow.keras.layers import BatchNormalization
 import tensorflow.contrib.eager as tfe
+from tensorflow.keras.layers import Flatten, Activation, Conv2D, Conv2DTranspose, Dense
+from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.models import Model
-import tensorflow.train as optimizers
-import tensorflow.keras.backend as k
 from keras.utils import generic_utils
 import pdb  # for debugging
 import numpy as np
 from PIL import Image
+from os.path import join as jp
 
 try:
     from utils import save_img
 except Exception as e:
     from trainer.utils import save_img
+
+
+# hardcoded..... lets put this in a config along with other shit later on
+print('warn hardcoded ckpt folder')
+ckpt_fol = 'ckpt'
 
 
 def model_generator():
@@ -97,30 +101,13 @@ def model_generator():
                padding='same', dilation_rate=(1, 1)),
         BatchNormalization(),
         Activation('sigmoid')
-    ])
+    ], name='generator_model')
 
     # model_gen = Model(inputs=in_layer, outputs=model, name='Gener8tor')
     return model_gen
 
 
 def model_discriminator():
-    # def crop_image(img, crop):
-    #     return tf.image.crop_to_bounding_box(img,
-    #                                          crop.shape[1],
-    #                                          crop.shape[0],
-    #                                          crop.shape[3] - crop.shape[1],
-    #                                          crop.shape[2] - crop.shape[0])
-    #
-    # in_pts = tfe.Variable((4,), dtype='int32')
-    # cropping = Lambda(lambda x: K.map_fn(lambda y: crop_image(y[0], y[1]), elems=x, dtype=tf.float32),
-    #                   output_shape=local_image_tensor)
-    # g_img = tfe.Variable(global_shape)
-    # # l_img = cropping([g_img, in_pts])
-    # l_img = tf.image.crop_to_bounding_box(g_img,
-    #                                      clip_coords[1],
-    #                                      clip_coords[0],
-    #                                      clip_coords[3] - clip_coords[1],
-    #                                      clip_coords[2] - clip_coords[0])
 
     x_l = tf.keras.Sequential([
         Conv2D(64, kernel_size=5, strides=2, padding='same'),
@@ -189,6 +176,13 @@ def model_discriminator():
 
 
 class DiscConnected(Model):
+    """
+
+    the connected discriminator
+        - local discriminator branch concatenated with
+        - global discriminator  branch
+
+    """
     def __init__(self):
         super(DiscConnected, self).__init__()
         self.disc_model_local, self.disc_model_global = model_discriminator()
@@ -221,24 +215,51 @@ class ModelManager(Model):
         """
         super(ModelManager, self).__init__()
         self.params = params
+        load_ckpt = self.params.load_ckpt  # this is inputted and tells if to load or not to load
         self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
-        self.gen_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
+
+        # a note on base_save_dir -> normally, we do not need the "//" after "gs://" because os automatically infers it...
+        # however, using google storage, it throws an error without the front slashes.... so keep there there
+        self.base_save_dir = jp('gs://', self.params.staging_bucketname, self.params.job_dir)  # use this to construct paths if needed
+        self.ckpt_dir = jp(self.base_save_dir, 'ckpt/')  # where we throw out checkpoints AND SAME NOTE as above ~~~
+
+        # optimizers ***** NOTE THESE might be different from paper
+        self.gen_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)
+        self.gen_optimizer.__setattr__('name', 'gen_optimizer')  # necessary for checkpoint???
         self.disc_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
-        # self.brain_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
-
+        self.disc_optimizer.__setattr__('name', 'disc_optimizer')
         # this is the generator model
-        self.gen_model = model_generator()
-
+        self.gen_model = model_generator()  # need to checkpoint this... NOTE --- it's name is "generator_model"
         # full discriminator (i.e. global + local branch)
-        self.disc_model = DiscConnected()
+        self.disc_model = DiscConnected()  # need to checkpoint this... NOTE --- its name is disc_connected
 
-        # this is the full brain (generator + discriminator)
-        # self.full_brain = FullGAN(disc_model=self.disc_model, generator_model=self.gen_model)
+        # we need to explicitly global steps for each model
+        self.disc_gs = tfe.Variable(0, name='disc_gs', dtype=tf.int64)  # we can save this in checkpoint
+        self.gen_gs = tfe.Variable(0, name='gen_gs', dtype=tf.int64)  # we can save this in checkpoint
+        # keep track of "GLOBAL" epoch ----- overides in run_training_procedure
+        self.epoch = tfe.Variable(0, name='overall_epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
 
-        # if params.verbosity == 'INFO':
-        #     print(disc_model)
-        #     disc_brain.summary()
-        #     # view_models(disc_brain, '../summaries/disc_brain.png')
+        # we will create keyword args to throw into the checkpoint using the names of the self variables above
+        # the keys are the names above and the values are the self.$varname
+
+        kwarg = {
+            'gen_optimizer': self.gen_optimizer,
+            'disc_optimizer': self.disc_optimizer,
+            'generator_model': self.gen_model,
+            'disc_connected': self.disc_model,
+            'disc_gs': self.disc_gs,
+            'gen_gs': self.gen_gs,
+            'overall_epoch': self.epoch
+        }
+
+        self.checkpoint = tf.train.Checkpoint(**kwarg)
+
+        # now if param use checkpoint is true, load up the checkpoint
+        # in theory, this will alter all of the state variables defined above!
+        if load_ckpt:
+            print('RESTORING FROM CHECKPOINT')
+            self.checkpoint.restore(tf.train.latest_checkpoint(self.ckpt_dir))
+            print('sanity check - loaded epoch ... {}'.format(self.epoch))
 
     def predict_gen(self, img):
         """
@@ -250,6 +271,27 @@ class ModelManager(Model):
         generated_img = self.gen_model(img)
 
         return generated_img
+
+    def train_gen(self, imgs, labels):
+        """
+        trains and returns the loss on the GENERATOR
+        :return:
+        """
+
+        with tf.GradientTape() as tape:
+            predicted = self.gen_model(imgs, training=True)
+            loss_value = tf.losses.mean_squared_error(labels, predicted)
+
+        self.gen_loss_history.append(loss_value.numpy())
+        grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
+        self.gen_optimizer.apply_gradients(
+            zip(
+                grads,
+                self.gen_model.trainable_variables
+            ), global_step=self.gen_gs
+        )
+
+        return loss_value
 
     def train_disc(self, imgs, masked_imgs, labels):
         """
@@ -271,7 +313,7 @@ class ModelManager(Model):
                 grads,
                 self.disc_model.trainable_variables
             ),
-            global_step=tf.train.get_or_create_global_step()
+            global_step=self.disc_gs
         )
 
         return loss_value
@@ -279,6 +321,9 @@ class ModelManager(Model):
     def train_full_brain(self, erased_imgs, images, roi_imgs, valid):
         """
         trains the entire brain (i.e. gen + disc). can make probably write this more general and combine the other 2 training methods....
+
+        WARN - this might not be fully correct.... might need to do "joint" loss etc
+
         :param erased_imgs:
         :param images:
         :param roi_imgs:
@@ -303,7 +348,7 @@ class ModelManager(Model):
                 grads_gen,
                 self.gen_model.trainable_variables,
             ),
-            global_step=tf.train.get_or_create_global_step()
+            global_step=self.gen_gs
         )
 
         # now lets teach the discriminator...
@@ -322,33 +367,13 @@ class ModelManager(Model):
                 grads_disc,
                 self.disc_model.trainable_variables,
             ),
-            global_step=tf.train.get_or_create_global_step()
+            global_step=self.disc_gs
         )
+        # is this right loss?
+        loss = tf.add(loss_value_gen.numpy(), tf.multiply(loss_value_disc.numpy(), self.params.alpha))
 
-        loss = (1 / 2) * (loss_value_gen.numpy() + loss_value_disc.numpy())
         self.brain_history.append(loss)
         return loss
-
-    def train_gen(self, imgs, labels):
-        """
-        trains and returns the loss on the GENERATOR
-        :return:
-        """
-
-        with tf.GradientTape() as tape:
-            predicted = self.gen_model(imgs, training=True)
-            loss_value = tf.losses.mean_squared_error(labels, predicted)
-
-        self.gen_loss_history.append(loss_value.numpy())
-        grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
-        self.gen_optimizer.apply_gradients(
-            zip(
-                grads,
-                self.gen_model.trainable_variables
-            ), global_step=tf.train.get_or_create_global_step()
-        )
-
-        return loss_value
 
     def run_training_procedure(self, data_gen):
         # data generator
@@ -358,10 +383,13 @@ class ModelManager(Model):
         # d_epochs = int(self.params.num_epochs * 0.02)
         g_epochs = 2
         d_epochs = 2
-        for epoch in range(self.params.num_epochs):
+        generated_imgs = None  # redundant... but to stop warning
+        init_epoch = self.epoch.numpy()
+        for epoch in range(init_epoch, self.params.num_epochs):
             print('\nstarting epoch {}\n'.format(epoch))
             # progress bar visualization (comment out in ML Engine)
-            progbar = generic_utils.Progbar(len(data_gen))
+            prog_cap = 300000000 if self.params.max_img_cnt is None else self.params.max_img_cnt
+            progbar = generic_utils.Progbar(prog_cap)
             for images, masks, points in data_gen.flow(batch_size=self.params.train_batch_size):
 
                 # batch of images made into a tensor size [batch_size, im_dim_x, im_dim_y, channel)
@@ -371,7 +399,7 @@ class ModelManager(Model):
                 masks = tf.cast(masks, tf.float32)
 
                 # these are the images with the patches blacked out (i.e. set to zero) - same size as images
-                erased_imgs = tf.math.multiply(images, tf.math.subtract(tf.constant(1, dtype=tf.float32), masks))
+                erased_imgs = tf.multiply(images, tf.subtract(tf.constant(1, dtype=tf.float32), masks))
 
                 # we create the "roi_imgs" which are the images times a rectange of size self.local_shape which
                 # encompasses the entire mask. Note all rectangles are the same size. we use "points" defined in the
@@ -398,8 +426,8 @@ class ModelManager(Model):
                 valid = np.ones((self.params.train_batch_size, 1))
                 fake = np.zeros((self.params.train_batch_size, 1))
                 # the gen and disc losses
-                g_loss = 0.0
-                d_loss = 0.0
+                g_loss = tfe.Variable(0)
+                d_loss = tfe.Variable(0)
                 # we must train the neural nets seperately, and then together
                 # train generator for 90k epochs
                 if epoch < g_epochs:
@@ -423,27 +451,29 @@ class ModelManager(Model):
                     # # throw in A.I. generated images with label FAKE
                     # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
                     # # combine and set the disc loss
-                    d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+                    d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
                         g_loss = self.train_full_brain(erased_imgs, images, roi_imgs, valid)
                         # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
 
                 # progress bar visualization (comment out in ML Engine)
-                # NOTE - d_loss is not .numpy() fied yet - WARN !!!!!!!!!!!!!!!
-                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss), ("Gen Loss: ", g_loss)])
+                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy())])
                 batch_count += 1
+
+            # increment the self.epoch  -> we need to do this so that the checkpoint is accurate....
+            self.epoch.assign_add(1)
 
             # gen_brain.save(f"./outputs/models/batch_{batch_count}_generator.h5")
             # disc_brain.save(f"./outputs/models/batch_{batch_count}discriminator.h5")
             if epoch % self.params.epoch_save_frequency == 0 and epoch > 0:
-                # save the generated image
-                last_img = generated_imgs[0]
-                last_img *= 255
-                dreamt_image = Image.fromarray(np.asarray(last_img, dtype='uint8'), 'RGB')
-                if dreamt_image is not None:
-                    output_image_path = 'gs://{}/{}/images/epoch_{}_image.png'.format(
-                        self.params.staging_bucketname,
-                        self.params.job_dir, epoch
-                    )
+                # save check_point
+                print('saving checkpoint {}'.format(self.ckpt_dir))
+                self.checkpoint.save(self.ckpt_dir)
+                # save a generated image for peace of mind
+                if generated_imgs is not None:
+                    last_img = generated_imgs[0]
+                    last_img += 255
+                    dreamt_image = Image.fromarray(np.asarray(last_img, dtype='uint8'), 'RGB')
+                    output_image_path = jp(self.base_save_dir, 'images', 'epoch_{}_image.png'.format(epoch))
                     save_img(save_path=output_image_path, img_data=dreamt_image)
