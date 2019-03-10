@@ -1,31 +1,162 @@
-import numpy as np
 import argparse
 import tensorflow as tf
 import os
 from datetime import datetime
-from keras.utils import generic_utils
-from PIL import Image
-# import pdb  # run debugging from command
+
+# enable eager execution......
+# QUESTION - do we need to call this in model.py also for example???
 tf.enable_eager_execution()
 tf.executing_eagerly()
 
 # NOTE -- for some fucking ass reason, need to change the import names when running local versus cloud............
 #         local as in this modules README at least....
+#
+#         so lets wrap the import in a try catch
+try:
+    # local call ---
+    from model import ModelManager
+    from generator import DataGenerator
 
-# local
-from model import full_gen_layer, full_disc_layer, ModelManager
-from generator import DataGenerator
-from utils import save_img, initialize_hyper_params
+except Exception as e:
+    # # cloud - multi
+    from trainer.model import ModelManager
+    from trainer.generator import DataGenerator
 
-# # # cloud
-# from trainer.model import full_gen_layer, full_disc_layer, ModelManager
-# from trainer.generator import DataGenerator
-# from trainer.utils import save_img, initialize_hyper_params
+
+def initialize_hyper_params(args_parser):
+
+    """
+    Define the arguments with the default values,
+    parses the arguments passed to the task,
+    and set the HYPER_PARAMS global variable
+
+    Is this ok in utils?
+
+    Args:
+        args_parser
+    """
+
+    # Data files arguments
+    args_parser.add_argument(
+        '--job-name',
+        help='Current gcloud job name',
+        type=str,
+    )
+    args_parser.add_argument(
+        '--train-batch-size',
+        help='Batch size for each training step',
+        type=int,
+        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+    )
+    args_parser.add_argument(
+        '--num-epochs',
+        help="""\
+            Maximum number of training data epochs on which to train.
+            If both --train-size and --num-epochs are specified,
+            --train-steps will be: (train-size/train-batch-size) * num-epochs.\
+            """,
+        default=500,
+        type=int,
+    )
+    args_parser.add_argument(
+        '--gen-loss',
+        help="""\
+            The loss function for generator\
+            """,
+        default='mse',
+        type=str,
+    )
+    args_parser.add_argument(
+        '--disc-loss',
+        help="""\
+            The loss function for discriminator\
+            """,
+        default='binary_crossentropy',
+        type=str,
+    )
+    args_parser.add_argument(
+        '--alpha',
+        default=0.0004,
+        type=float,
+    )
+    args_parser.add_argument(
+        '--bucketname',
+        default="lsun-roomsets",
+        type=str,
+    )
+    args_parser.add_argument(
+        '--staging-bucketname',
+        default="theos_jobs",
+        type=str,
+    )
+    args_parser.add_argument(
+        '--epoch-save-frequency',
+        default=2,
+        type=int,
+    )
+    args_parser.add_argument(
+        '--job-dir',
+        # default="gs://temp/outputs",
+        default="output_test_ckpt_2",
+        type=str,
+    )
+    args_parser.add_argument(
+        '--img-dir',
+        # default="gs://temp/outputs",
+        default="images/bedroom_train",
+        type=str,
+    )
+    args_parser.add_argument(
+        '--load-ckpt',
+        default=False,
+        type=bool,
+        help="""\
+            True or False specifying if to load the checkpoint
+            file. If True, loads the highest epoch found in the
+            ckpt folder in the output dir. If False, goes along
+            as normal without loading any checkpoint"""
+    )
+    args_parser.add_argument(
+        '--optimizer',
+        default='AdadeltaOptimizer',
+        help="""\
+            The optimizer you want to use. Must be the same
+            as in keras.optimizers"""
+    )
+    # Estimator arguments
+    args_parser.add_argument(
+        '--learning-rate',
+        help="Learning rate value for the optimizers",
+        default=0.01,
+        type=float
+    )
+    # Estimator arguments
+    args_parser.add_argument(
+        '--max-img-cnt',
+        help="Number of maximum images to look at. Set to None if you"
+             "want the whole dataset. Primarily used for testing purposes.",
+        default=300,
+        type=int
+    )
+    # Argument to turn on all logging
+    args_parser.add_argument(
+        '--verbosity',
+        choices=[
+            'DEBUG',
+            'ERROR',
+            'FATAL',
+            'INFO',
+            'WARN'
+        ],
+        default='INFO',
+    )
+
+    return args_parser.parse_args()
 
 
 class Trainer:
     """
-    puts everything together, defines the task (experiment) and also runs it
+    puts everything together and runs the training task from modelmanager
     """
     def __init__(
         self,
@@ -57,47 +188,12 @@ class Trainer:
         # Set C++ Graph Execution level verbosity  ------- dont know what this is
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[self.params.verbosity] / 10)
 
-        # Directory to store output model and checkpoints
-        model_dir = self.params.job_dir
-
-        # If job_dir_reuse is False then remove the job_dir if it exists
-        print("Resume training:", self.params.reuse_job_dir)
-        if not self.params.reuse_job_dir:
-            if tf.gfile.Exists(model_dir):
-                tf.gfile.DeleteRecursively(model_dir)
-                print("Deleted job_dir {} to avoid re-use".format(model_dir))
-            else:
-                print("No job_dir available to delete")
-        else:
-            print("Reusing job_dir {} if it exists".format(model_dir))
-
-        # NOTE ---- i dont know what run_config does currently...
-        self.run_config = tf.estimator.RunConfig(
-            tf_random_seed=19830610,
-            log_step_count_steps=1000,
-            save_checkpoints_secs=120,  # change if you want to change frequency of saving checkpoints
-            keep_checkpoint_max=3,
-            model_dir=model_dir
-        )
-        run_config = self.run_config.replace(model_dir=model_dir)
-        print("Model Directory:", run_config.model_dir)
-
         # finally initialize the data generator
         self.train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
         # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
         self.mng = ModelManager(
             params,
-            global_image_tensor=(256, 256, 3),
-            local_image_tensor=(128, 128, 3)
         )
-
-    def run_task(self):
-        """
-        this defines the actual experiment
-        :return:
-        """
-        self.mng.train(self.train_datagen)
-
 
     def main(self):
         """
@@ -112,8 +208,7 @@ class Trainer:
         print(".......................................")
 
         # the actual call to run the experiment
-        self.run_task()
-
+        self.mng.run_training_procedure(self.train_datagen)
 
         time_end = datetime.utcnow()
         print(".......................................")
@@ -124,9 +219,9 @@ class Trainer:
         print("")
 
 
-# not really sure the timming with this.... like I guess it is called on import ... ? Before main obviously
-args_parser = argparse.ArgumentParser()
-HYPER_PARAMS = initialize_hyper_params(args_parser)
+# not really sure the timming with this.... like I guess it is called on import ... ? Before __main__ obviously
+argument_parser = argparse.ArgumentParser()
+HYPER_PARAMS = initialize_hyper_params(argument_parser)
 
 
 if __name__ == '__main__':
