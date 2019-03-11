@@ -6,3 +6,4 @@ outputs/*
 jobs/*
 mlengine/output_models/*
 mlengine/trainer/__pycache__
+blob/*
