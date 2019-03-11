@@ -10,18 +10,28 @@ $ python -m trainer.task
 1. Set job name
 ```
 now=$(date +"%Y%m%d_%H%M%S")
-JOB_NAME="ai_maid_test_$now"
+JOB_NAME="ai_maid_test_kangze_$now"
 PACKAGE_STAGING_PATH="gs://kangzes_jobs"
 ```
 2. Run job locally
 ```
-gcloud ml-engine local train --package-path trainer \
-                             --module-name trainer.task \
-                             -- \
+$ gcloud ml-engine local train --package-path trainer \
+                               --module-name trainer.task \
+                               -- \
+
+OR ::::
+
+$ cd mlengine_theo/trainer
+
+$ python3 task.py
 
 ```
 or distributed
 ```
+inside image-painter-gans
+
+remember to change paths in task... (need to fix this)
+
 $ gcloud ml-engine jobs submit training $JOB_NAME \
                                     --module-name trainer.task \
                                     --package-path trainer \
@@ -30,7 +40,6 @@ $ gcloud ml-engine jobs submit training $JOB_NAME \
                                     --region us-central1 \
                                     --staging-bucket $PACKAGE_STAGING_PATH \
                                     -- \
-                                    --verbosity DEBUG \
 
 ```
 3. View job status or stream logs
