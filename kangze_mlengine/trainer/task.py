@@ -8,21 +8,18 @@ from datetime import datetime
 tf.enable_eager_execution()
 tf.executing_eagerly()
 
-from model import ModelManager
-from generator import DataGenerator
 # NOTE -- for some fucking ass reason, need to change the import names when running local versus cloud............
 #         local as in this modules README at least....
 #
 #         so lets wrap the import in a try catch
-# try:
-    # local call ---
-    # from model import ModelManager
-    # from generator import DataGenerator
+try:
+    from model import ModelManager
+    from generator import DataGenerator
 
-# except Exception as e:
-#     # # cloud - multi
-#     from trainer.model import ModelManager
-#     from trainer.generator import DataGenerator
+except Exception as e:
+    # # cloud - multi
+    from trainer.model import ModelManager
+    from trainer.generator import DataGenerator
 
 
 def initialize_hyper_params(args_parser):
@@ -137,7 +134,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=20,
+        default=30,
         type=int
     )
     # Argument to turn on all logging
