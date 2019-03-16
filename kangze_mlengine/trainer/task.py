@@ -29,8 +29,6 @@ def initialize_hyper_params(args_parser):
     parses the arguments passed to the task,
     and set the HYPER_PARAMS global variable
 
-    Is this ok in utils?
-
     Args:
         args_parser
     """
@@ -45,7 +43,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=2  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=1  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -54,13 +52,14 @@ def initialize_hyper_params(args_parser):
             If both --train-size and --num-epochs are specified,
             --train-steps will be: (train-size/train-batch-size) * num-epochs.\
             """,
-        default=10,
+        default=50,
         type=int,
     )
     args_parser.add_argument(
         '--gen-loss',
         help="""\
             The loss function for generator\
+            * I dont think this is actually hooked up (should be implemented)
             """,
         default='mse',
         type=str,
@@ -69,6 +68,7 @@ def initialize_hyper_params(args_parser):
         '--disc-loss',
         help="""\
             The loss function for discriminator\
+            * I dont think this is used.. (should be implemented)
             """,
         default='binary_crossentropy',
         type=str,
@@ -85,7 +85,7 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--staging-bucketname',
-        default="kangzes_jobs",
+        default="theos_jobs",
         type=str,
     )
     args_parser.add_argument(
@@ -107,7 +107,7 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--load-ckpt',
-        default=True,
+        default=False,
         type=bool,
         help="""\
             True or False specifying if to load the checkpoint
@@ -125,7 +125,8 @@ def initialize_hyper_params(args_parser):
     # Estimator arguments
     args_parser.add_argument(
         '--learning-rate',
-        help="Learning rate value for the optimizers",
+        help="Learning rate value for the optimizers - "
+             "* I dont think this is used ( not needed with adadelta)",
         default=0.01,
         type=float
     )
@@ -134,7 +135,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=30,
+        default=10,  # NOTE 300 imgs in validation set
         type=int
     )
     # Argument to turn on all logging
@@ -153,69 +154,48 @@ def initialize_hyper_params(args_parser):
     return args_parser.parse_args()
 
 
-class Trainer:
+def main(params,
+         global_shape=(256, 256, 3),
+         local_shape=(128, 128, 3)):
     """
-    puts everything together and runs the training task from modelmanager
+    TRAIN A BITCH
+    :param params: dict - from argparser the paramaters of erting
+    :param global_shape: tuple - assumed RGB - the shape inputted to the net
+    :param local_shape: tuple - assumed RGB - local
     """
-    def __init__(
-        self,
-        params,
-        global_shape=(256, 256, 3),
-        local_shape=(128, 128, 3),
-    ):
-        """
-        trainer - manages and runs our experiment. holds everything related to the experiment (task) and runs the
-        experiment. I.e. holds the generator, the modelmanager, the paramaters etc
 
-        initialization will create the GAN (in mng) and the data generator
+    # peace of mind
+    print('Hyper-parameters:')
+    print(params)
 
-        :param params: dict - from argparser the paramaters of erting
-        :param global_shape: tuple - assumed RGB - the shape inputted to the net
-        :param local_shape: tuple - assumed RGB - local
-        """
-        # set up
-        print('initializing task')
-        self.params = params
+    # Set python level verbosity
+    tf.logging.set_verbosity(params.verbosity)
 
-        # peace of mind
-        print('Hyper-parameters:')
-        print(self.params)
+    # Set C++ Graph Execution level verbosity  ------- dont know what this is
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[params.verbosity] / 10)
 
-        # Set python level verbosity
-        tf.logging.set_verbosity(self.params.verbosity)
+    # finally initialize the data generator
+    train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
+    # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
+    mng = ModelManager(params)
 
-        # Set C++ Graph Execution level verbosity  ------- dont know what this is
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[self.params.verbosity] / 10)
 
-        # finally initialize the data generator
-        self.train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
-        # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
-        self.mng = ModelManager(
-            params,
-        )
+    # Run the experiment
+    time_start = datetime.utcnow()
+    print("")
+    print("Experiment started at {}".format(time_start.strftime("%H:%M:%S")))
+    print(".......................................")
 
-    def main(self):
-        """
-        runs the experiment baby
-        :return:
-        """
+    # the actual call to run the experiment
+    mng.run_training_procedure(train_datagen)
 
-        # Run the experiment
-        time_start = datetime.utcnow()
-        print("")
-        print("Experiment started at {}".format(time_start.strftime("%H:%M:%S")))
-        print(".......................................")
-
-        # the actual call to run the experiment
-        self.mng.run_training_procedure(self.train_datagen)
-
-        time_end = datetime.utcnow()
-        print(".......................................")
-        print("Experiment finished at {}".format(time_end.strftime("%H:%M:%S")))
-        print("")
-        time_elapsed = time_end - time_start
-        print("Experiment elapsed time: {} seconds".format(time_elapsed.total_seconds()))
-        print("")
+    time_end = datetime.utcnow()
+    print(".......................................")
+    print("Experiment finished at {}".format(time_end.strftime("%H:%M:%S")))
+    print("")
+    time_elapsed = time_end - time_start
+    print("Experiment elapsed time: {} seconds".format(time_elapsed.total_seconds()))
+    print("")
 
 
 # not really sure the timming with this.... like I guess it is called on import ... ? Before __main__ obviously
@@ -225,10 +205,5 @@ HYPER_PARAMS = initialize_hyper_params(argument_parser)
 
 if __name__ == '__main__':
 
-    # we run the experiment by initializing the trainer
-    trainer = Trainer(
-        params=HYPER_PARAMS
-    )
-
-    # then run
-    trainer.main()
+    # we run the experiment with a single call
+    main(HYPER_PARAMS)
