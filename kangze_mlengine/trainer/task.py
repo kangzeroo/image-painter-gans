@@ -43,7 +43,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=1  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=5  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -96,7 +96,7 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="output_test_ckpt_1",
+        default="output_fuckdir",
         type=str,
     )
     args_parser.add_argument(
@@ -125,9 +125,9 @@ def initialize_hyper_params(args_parser):
     # Estimator arguments
     args_parser.add_argument(
         '--learning-rate',
-        help="Learning rate value for the optimizers - "
-             "* I dont think this is used ( not needed with adadelta)",
-        default=0.01,
+        help="Learning rate value for the optimizers",
+        # default=0.01,
+        default=1.0,
         type=float
     )
     # Estimator arguments
@@ -135,7 +135,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=10,  # NOTE 300 imgs in validation set
+        default=20,  # NOTE 300 imgs in validation set
         type=int
     )
     # Argument to turn on all logging
