@@ -382,7 +382,7 @@ class ModelManager:
         # # is this right loss?
 
         self.brain_history.append(loss)
-        return loss
+        return loss, loss_value_gen
 
     def run_training_procedure(self, data_gen):
         # train over time
@@ -446,11 +446,11 @@ class ModelManager:
                     d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
                     if epoch >= g_epochs + d_epochs:
                         # train the entire brain
-                        g_loss = self.train_full_brain(erased_imgs, images, points, fake)
+                        combined_loss, g_loss = self.train_full_brain(erased_imgs, images, points, fake)
                         # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
 
                 # progress bar visualization (comment out in ML Engine)
-                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy())])
+                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy()), ("Combined Loss: ", combined_loss.numpy())])
 
             # increment the self.epoch  -> we need to do this so that the checkpoint is accurate....
             self.epoch.assign_add(1)

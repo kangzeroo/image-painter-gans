@@ -43,7 +43,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=5  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -96,7 +96,7 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="output_fuckdir",
+        default="output_fuckdir_long_ways",
         type=str,
     )
     args_parser.add_argument(
@@ -135,7 +135,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=20,  # NOTE 300 imgs in validation set
+        default=300,  # NOTE 300 imgs in validation set
         type=int
     )
     # Argument to turn on all logging
