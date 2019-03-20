@@ -75,7 +75,7 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--alpha',
-        default=0.0004,
+        default=0.0004,  # should not change this
         type=float,
     )
     args_parser.add_argument(
@@ -96,7 +96,7 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="output_fuckdir_long_ways",
+        default="output_SANITY_onvalidation",
         type=str,
     )
     args_parser.add_argument(

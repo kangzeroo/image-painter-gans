@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from tensorflow.keras.layers import Flatten, Activation, Conv2D, Conv2DTranspose, Dense, BatchNormalization
-from tensorflow.keras.models import Model
+from tensorflow.keras import Model
 from keras.utils import generic_utils
 import pdb  # for debugging
 import numpy as np
@@ -19,170 +19,177 @@ print('warn hardcoded ckpt folder')
 ckpt_fol = 'ckpt'
 
 
-def model_generator():
-    """
-    creates the generator
-    :param input_shape:
-    :return:
-    """
-    # in_layer = tfe.Variable(global_image_tensor)
-
-    model_gen = tf.keras.Sequential([
-        Conv2D(64, kernel_size=5, strides=1, padding='same',
-               dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(128, kernel_size=3, strides=2,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(128, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=2,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(2, 2)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(4, 4)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(8, 8)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(16, 16)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2DTranspose(128, kernel_size=4, strides=2,
-                        padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(128, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2DTranspose(64, kernel_size=4, strides=2,
-                        padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(32, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(3, kernel_size=3, strides=1,
-               padding='same', dilation_rate=(1, 1)),
-        BatchNormalization(),
-        Activation('sigmoid')
-    ], name='generator_model')
-
-    # model_gen = Model(inputs=in_layer, outputs=model, name='Gener8tor')
-    return model_gen
-
-
-def model_discriminator():
-
-    x_l = tf.keras.Sequential([
-        Conv2D(64, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(128, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(512, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(512, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Flatten(),
-        Dense(1024, activation='relu')
-    ])
-
-    x_g = tf.keras.Sequential([
-        Conv2D(64, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(128, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(256, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(512, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(512, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Conv2D(512, kernel_size=5, strides=2, padding='same'),
-        BatchNormalization(),
-        Activation('relu'),
-        Flatten(),
-        Dense(1024, activation='relu')
-    ])
-
-    return x_l, x_g
-
-# # i thought maybe we would train the whole gan by making another model class.... but settled to do it on the individual
-# # models instead ...
-#
-# class FullGAN(Model):
-#     def __init__(self, disc_model, generator_model):
-#         super(FullGAN, self).__init__()
-#         self.disc_model, self.generator_model = disc_model, generator_model
-#
-#     def call(self, erased_imgs, roi_imgs):
-#         """
-#         we put the generator and the discriminator together and train the hole ting babygirl
-#         :param imgs: tensor of images --- typically output from generator
-#         :param cropped_imgs: the generated images by mask......
-#         :return:
-#         """
-#         x_gen = self.generator_model(erased_imgs)
-#         x_disc = self.disc_model(x_gen, roi_imgs)
-#
-#         return x_gen, x_disc
-
-#
-# class GLCIC(Model):
-#     def __init__(self, gen_model, disc_model):
-#         super(GLCIC, self).__init__()
-#         self.gen_model
-#
-
 class Generator(Model):
     def __init__(self):
         super(Generator, self).__init__()
-        self.gen_model = model_generator()
 
-    def call(self, inputs, training=False):
-        x = self.gen_model(inputs)
+        # self.name = 'generator_model'  # how do you set this
+
+        self.conv11 = Conv2D(64, kernel_size=5, strides=1, padding='same',
+                            dilation_rate=(1, 1))
+        self.bn1 = BatchNormalization()
+        self.act1 = Activation('relu')
+
+        self.conv21 = Conv2D(128, kernel_size=3, strides=2,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn2 = BatchNormalization()
+        self.act2 = Activation('relu')
+
+        self.conv22 = Conv2D(128, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn3 = BatchNormalization()
+        self.act3 = Activation('relu')
+
+        self.conv31 = Conv2D(256, kernel_size=3, strides=2,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn4 = BatchNormalization()
+        self.act4 = Activation('relu')
+
+        self.conv32 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn5 = BatchNormalization()
+        self.act5 = Activation('relu')
+
+        self.conv33 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn6 = BatchNormalization()
+        self.act6 = Activation('relu')
+
+        self.conv34 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(2, 2))
+        self.bn7 = BatchNormalization()
+        self.act7 = Activation('relu')
+
+        self.conv35 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(4, 4))
+        self.bn8 = BatchNormalization()
+        self.act8 = Activation('relu')
+
+        self.conv36 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(8, 8))
+        self.bn9 = BatchNormalization()
+        self.act9 = Activation('relu')
+
+        self.conv37 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(16, 16))
+        self.bn10 = BatchNormalization()
+        self.act10 = Activation('relu')
+
+        self.conv38 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn11 = BatchNormalization()
+        self.act11 = Activation('relu')
+
+        self.conv39 = Conv2D(256, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn12 = BatchNormalization()
+        self.act12 = Activation('relu')
+
+        self.convT1 = Conv2DTranspose(128, kernel_size=4, strides=2,
+                                      padding='same')
+        self.bn13 = BatchNormalization()
+        self.act13 = Activation('relu')
+
+        self.conv41 = Conv2D(128, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn14 = BatchNormalization()
+        self.act14 = Activation('relu')
+
+        self.convT2 = Conv2DTranspose(64, kernel_size=4, strides=2,
+                                   padding='same')
+        self.bn15 = BatchNormalization()
+        self.act15 = Activation('relu')
+
+        self.conv51 = Conv2D(32, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn16 = BatchNormalization()
+        self.act16 = Activation('relu')
+
+        self.conv61 = Conv2D(3, kernel_size=3, strides=1,
+                             padding='same', dilation_rate=(1, 1))
+        self.bn17 = BatchNormalization()
+        self.act17 = Activation('sigmoid')
+
+    def call(self, inputs, training=True, *args, **kwargs):
+        """
+        ummm..... CALL THIS BITCH .... note - training should always be true, otherwise, batchnorm layers will
+        yields nans after consequitive calls (BUG???)
+        :param inputs: tensor - should be the MASKED imgs in batchs
+        :param training: BOOL - set to true in order for the bathcnorm layers to work...
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        training = tfe.Variable(training)
+
+        x = self.conv11(inputs)
+        x = self.bn1(x, training=training)
+        x = self.act1(x)
+
+        x = self.conv21(x)
+        x = self.bn2(x, training=training)
+        x = self.act2(x)
+
+        x = self.conv22(x)
+        x = self.bn3(x, training=training)
+        x = self.act3(x)
+
+        x = self.conv31(x)
+        x = self.bn4(x, training=training)
+        x = self.act4(x)
+
+        x = self.conv32(x)
+        x = self.bn5(x, training=training)
+        x = self.act5(x)
+
+        x = self.conv33(x)
+        x = self.bn6(x, training=training)
+        x = self.act6(x)
+
+        x = self.conv34(x)
+        x = self.bn7(x, training=training)
+        x = self.act7(x)
+
+        x = self.conv35(x)
+        x = self.bn8(x, training=training)
+        x = self.act8(x)
+
+        x = self.conv36(x)
+        x = self.bn9(x, training=training)
+        x = self.act9(x)
+
+        x = self.conv37(x)
+        x = self.bn10(x, training=training)
+        x = self.act10(x)
+
+        x = self.conv38(x)
+        x = self.bn11(x, training=training)
+        x = self.act11(x)
+
+        x = self.conv39(x)
+        x = self.bn12(x, training=training)
+        x = self.act12(x)
+
+        x = self.convT1(x)
+        x = self.bn13(x, training=training)
+        x = self.act13(x)
+
+        x = self.conv41(x)
+        x = self.bn14(x, training=training)
+        x = self.act14(x)
+
+        x = self.convT2(x)
+        x = self.bn15(x, training=training)
+        x = self.act15(x)
+
+        x = self.conv51(x)
+        x = self.bn16(x, training=training)
+        x = self.act16(x)
+
+        x = self.conv61(x)
+        x = self.bn17(x, training=training)
+        x = self.act17(x)
+
         return x
 
 
@@ -195,11 +202,105 @@ class DiscConnected(Model):
     """
     def __init__(self):
         super(DiscConnected, self).__init__()
-        self.disc_model_local, self.disc_model_global = model_discriminator()
+        # self.disc_model_local, self.disc_model_global = model_discriminator()
+        # Local Discriminator
+        self.lc1 = Conv2D(64, kernel_size=5, strides=2, padding='same')
+        self.lbn1 = BatchNormalization()
+        self.lact1 = Activation('relu')
+        self.lc2 = Conv2D(128, kernel_size=5, strides=2, padding='same')
+        self.lbn2 = BatchNormalization()
+        self.lact2 = Activation('relu')
+        self.lc3 = Conv2D(256, kernel_size=5, strides=2, padding='same')
+        self.lbn3 = BatchNormalization()
+        self.lact3 = Activation('relu')
+        self.lc40 = Conv2D(512, kernel_size=5, strides=2, padding='same')
+        self.lbn4 = BatchNormalization()
+        self.lact4 = Activation('relu')
+        self.lc41 = Conv2D(512, kernel_size=5, strides=2, padding='same')
+        self.lbn5 = BatchNormalization()
+        self.lact5 = Activation('relu')
+        self.lf1 = Flatten()
+        self.ld1 = Dense(1024, activation='relu')
 
-    def call(self, inputs, cropped_imgs, training=False):
-        # x = tf.keras.cont(inputs)
-        x = tf.concat([self.disc_model_local(cropped_imgs), self.disc_model_global(inputs)], axis=1)
+        # Global Discriminator
+        self.gc1 = Conv2D(64, kernel_size=5, strides=2, padding='same')
+        self.gbn1 = BatchNormalization()
+        self.gact1 = x_l = Activation('relu')
+        self.gc2 = Conv2D(128, kernel_size=5, strides=2, padding='same')
+        self.gbn2 = BatchNormalization()
+        self.gact2 = Activation('relu')
+        self.gc3 = Conv2D(256, kernel_size=5, strides=2, padding='same')
+        self.gbn3 = BatchNormalization()
+        self.gact3 = Activation('relu')
+        self.gc40 = Conv2D(512, kernel_size=5, strides=2, padding='same')
+        self.gbn4 = BatchNormalization()
+        self.gact4 = Activation('relu')
+        self.gc41 = Conv2D(512, kernel_size=5, strides=2, padding='same')
+        self.gbn5 = BatchNormalization()
+        self.gact5 = Activation('relu')
+        self.gc42 = Conv2D(512, kernel_size=5, strides=2, padding='same')
+        self.gbn6 = BatchNormalization()
+        self.gact6 = Activation('relu')
+        self.gf1 = Flatten()
+        self.gd1 = Dense(1024, activation='relu')
+
+    def call(self, inputs, cropped_imgs, training=True,  *args, **kwargs):
+        """
+        call this bitch, bitch. NOTE - batch norm needs paraing "training" to be True... otherwise, yields nans
+        after consequetive calls (potential bug?)
+        :param inputs: tensor - imgs from gnerator (presumadly cunt) ni batches
+        :param cropped_imgs: tensor - imgs in batch the cropped images bitch
+        :param training: BOOL - for the fucking batchnorms cunt
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        training = tfe.Variable(training)
+
+        # local
+        xl = self.lc1(cropped_imgs)
+        xl = self.lbn1(xl, training=training)
+        xl = self.lact1(xl)
+        xl = self.lc2(xl)
+        xl = self.lbn2(xl, training=training)
+        xl = self.lact2(xl)
+        xl = self.lc3(xl)
+        xl = self.lbn3(xl, training=training)
+        xl = self.lact3(xl)
+        xl = self.lc40(xl)
+        xl = self.lbn4(xl, training=training)
+        xl = self.lact4(xl)
+        xl = self.lc41(xl)
+        xl = self.lbn5(xl, training=training)
+        xl = self.lact5(xl)
+        xl = self.lf1(xl)
+        xl = self.ld1(xl)
+
+
+        # global
+        xg = self.gc1(inputs)
+        xg = self.gbn1(xg, training=training)
+        xg = self.gact1(xg)
+        xg = self.gc2(xg)
+        xg = self.gbn2(xg, training=training)
+        xg = self.gact2(xg)
+        xg = self.gc3(xg)
+        xg = self.gbn3(xg, training=training)
+        xg = self.gact3(xg)
+        xg = self.gc40(xg)
+        xg = self.gbn4(xg, training=training)
+        xg = self.gact4(xg)
+        xg = self.gc41(xg)
+        xg = self.gbn5(xg, training=training)
+        xg = self.gact5(xg)
+        xg = self.gc42(xg)
+        xg = self.gbn6(xg, training=training)
+        xg = self.gact6(xg)
+        xg = self.gf1(xg)
+        xg = self.gd1(xg)
+
+        # now lets put these bitches together
+        x = tf.concat([xl, xg], axis=1)
         x = Dense(1, activation='sigmoid')(x)
         return x
 
@@ -274,15 +375,44 @@ class ModelManager:
             print('WARN ---- not picking up any checkpoints')
             # we should really delete the folder contents in this case ...
 
+    def _gen_loss(self, x, y, training=True):
+        """
+        calculate the generator loss
+        :param x: tensor - masked image in batches (i.e. with roi set to zero)
+        :param y: tensor - the acutal images
+        :param training: bool - to train or not to? (NOTE always set this to true, otherwise
+            inferrence will yield nans (potential bug))) BITCH
+        :return:
+        """
+        output = self.gen_model(x, training=training)
+        return tf.losses.mean_squared_error(predictions=output, labels=y), output
+
+    def _disc_loss(self, x, xx, y, training=True):
+        """
+        calculate the loss from the discriminator
+        :param x: the global tensor images (in batches)
+        :param xx: the local tensor images (batches)
+        :param y: the labels (i.e. real or fake BITCH)
+        :param training: BOOL - training or not ?? for batchnorm layers - NOTE bugged when this is true....
+            PLEASE SET THIS TO TRUE when inffering .... for somereason fucks up when false..... ???? need to look
+            into this
+        :return:
+        """
+        return tf.losses.sigmoid_cross_entropy(logits=self.disc_model(x, xx, training=training),
+                                               multi_class_labels=y)
+
     def train_gen(self, imgs, labels):
         """
         trains and returns the loss on the GENERATOR
+        :param imgs: tensor - the images with a masked out region
+        :param labels: tensor - the actual images (what the generator should reproduce)
         :return:
         """
 
         with tf.GradientTape() as tape:
-            predicted = self.gen_model(imgs, training=True)
-            loss_value = tf.losses.mean_squared_error(labels, predicted)
+            # predicted = self.gen_model(imgs, training=True)
+            # loss_value = tf.losses.mean_squared_error(labels, predicted)
+            loss_value, _ = self._gen_loss(x=imgs, y=labels, training=True)
 
         self.gen_loss_history.append(loss_value.numpy())  # track the loss in a variable
         grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
@@ -297,16 +427,15 @@ class ModelManager:
 
     def train_disc(self, imgs, masked_imgs, labels):
         """
-        we kinda need to create it on the fly also
-        :param imgs:
-        :param masked_imgs:
-        :param labels:
-        :return:
+        TRAIN THE DISCRIMINATORS (global + local).
+        :param imgs: tensor - global output from generator (in batches)
+        :param masked_imgs: tensor - local output from generator (in batches)
+        :param labels: BOOL - whether the imgs + masked_imgs are real or from generator
+        :return: LOSS - as tensor from discriminator
         """
 
         with tf.GradientTape() as tape:
-            output = self.disc_model(imgs, masked_imgs)
-            loss_value = tf.losses.sigmoid_cross_entropy(labels, output)  # we use simoid_cross_entropy in replace of keras' binary cross entropy
+            loss_value = self._disc_loss(imgs, masked_imgs, labels, training=True)
 
         self.disc_loss_history.append(loss_value.numpy())
         grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
@@ -322,10 +451,7 @@ class ModelManager:
 
     def train_full_brain(self, erased_imgs, images, points, valid):
         """
-        trains the entire brain (i.e. gen + disc). can make probably write this more general and combine the other 2 training methods....
-
-        WARN - this might not be fully correct.... might need to do "joint" loss etc
-
+        trains the generator on the JOINT (??) loss from the generator and the discriminator.
         :param erased_imgs:
         :param images:
         :param roi_imgs:
@@ -333,34 +459,17 @@ class ModelManager:
         :return:
         """
         with tf.GradientTape() as tape_gen:
-            # output_gen, output_disc = self.full_brain(erased_imgs, roi_imgs)
-            tape_gen.watch(self.gen_model.variables)
-            output_gen = self.gen_model(erased_imgs)
-            loss_value_gen = tf.losses.mean_squared_error(
-                images,
-                output_gen,
-                # weights=1.0
-            )
-
+            # first calculate loss + predictions from generator
+            loss_value_gen, output_gen = self._gen_loss(erased_imgs, images, training=True)
+            # we do a nested gradient tape (???) to track the discriminator also.... prevents errors... ?
             with tf.GradientTape() as tape_disc:
-
-                tape_disc.watch(self.disc_model.variables)
                 # get the roi of the generator output
                 roi_imgs_gen = extract_roi_imgs(output_gen, points)
-
-                output_disc = self.disc_model(output_gen, roi_imgs_gen)
-                loss_value_disc = tf.losses.sigmoid_cross_entropy(
-                    # we use sigmoid_cross_entropy in replace of keras' binary cross entropy
-                    valid,
-                    output_disc,
-                    # weights=self.params.alpha
-                )
-
+                loss_value_disc = self._disc_loss(output_gen, roi_imgs_gen, valid, training=True)
+                # combine the losses with the paramater alpha... (* SHOULD THIS BE HERE? or in weights.. ? )
                 loss = tf.add(loss_value_gen, tf.multiply(loss_value_disc, self.params.alpha))
-                # loss = tf.add(loss_value_gen, loss_value_disc)
 
-            # I think we really just train the generator
-            # train the generator
+            # train the generator (note - discriminator has already been trainined! )
             grads_gen = tape_gen.gradient(loss, self.gen_model.trainable_variables)
             self.gen_optimizer.apply_gradients(
                 zip(
@@ -369,17 +478,6 @@ class ModelManager:
                 ),
                 global_step=tf.train.get_or_create_global_step()
             )
-
-        # # now lets teach the discriminator...
-        # grads_disc = tape_disc.gradient(loss, self.disc_model.trainable_variables)
-        # self.disc_optimizer.apply_gradients(
-        #     zip(
-        #         grads_disc,
-        #         self.disc_model.trainable_variables,
-        #     ),
-        #     global_step=tf.train.get_or_create_global_step()
-        # )
-        # # is this right loss?
 
         self.brain_history.append(loss)
         return loss, loss_value_gen
@@ -408,13 +506,8 @@ class ModelManager:
                 # these are the images with the patches blacked out (i.e. set to zero) - same size as images
                 erased_imgs = tf.multiply(images, tf.subtract(tf.constant(1, dtype=tf.float32), masks))
 
-                # we create the "roi_imgs" which are the images times a rectange of size self.local_shape which
-                # encompasses the entire mask. Note all rectangles are the same size. we use "points" defined in the
-                # generator to create such images. then cast it to a tensor
-                # size [bs, local_shape[0], local_shape[1], channels]
-
                 # generate predictions on the erased images
-                generated_imgs = self.gen_model(erased_imgs)
+                generated_imgs = self.gen_model(erased_imgs, training=True)  # FOR SOME REASON PREDICTING WITH TRAINING=FALSE GIVES NANS
 
                 # generate the labels
                 valid = np.ones((self.params.train_batch_size, 1))
@@ -422,6 +515,7 @@ class ModelManager:
                 # the gen and disc losses
                 g_loss = tfe.Variable(0)
                 d_loss = tfe.Variable(0)
+                combined_loss = tfe.Variable(0)
 
                 # we must train the neural nets seperately, and then together
                 # train generator for 90k epochs
