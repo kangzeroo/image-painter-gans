@@ -10,8 +10,8 @@ $ python -m trainer.task
 1. Set job name
 ```
 now=$(date +"%Y%m%d_%H%M%S")
-JOB_NAME="ai_maid_test_kangze_$now"
-PACKAGE_STAGING_PATH="gs://kangzes_jobs"
+JOB_NAME="ai_maid_theo_$now"
+PACKAGE_STAGING_PATH="gs://theos_jobs"
 ```
 2. Run job locally
 ```
@@ -55,3 +55,10 @@ $ gcloud ml-engine jobs stream-logs $JOB_NAME
 ```
 $ gcloud ml-engine jobs cancel $JOB_NAME
 ```
+
+5. To launch tensorboard for example run:
+
+```
+tensorboard --logdir='gs://theos_jobs/testing/tb_logs/' --port=8088
+```
+then open localhost:8088/
