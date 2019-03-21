@@ -2,11 +2,7 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from tensorflow.keras.layers import Flatten, Activation, Conv2D, Conv2DTranspose, Dense, BatchNormalization
 from tensorflow.keras import Model
-from keras.utils import generic_utils
-import pdb  # for debugging
-import numpy as np
-from PIL import Image
-from os.path import join as jp
+
 
 try:
     from utils import save_img, extract_roi_imgs
@@ -14,9 +10,17 @@ except Exception as e:
     from trainer.utils import save_img, extract_roi_imgs
 
 
-# hardcoded..... lets put this in a config along with other shit later on
-print('warn hardcoded ckpt folder')
-ckpt_fol = 'ckpt'
+def log_scalar(name, val, logging_frequency=1):
+    """
+    tensorboard logs "name" with value = val
+    :param name: str - name of paramater
+    :param val: value of paramater (scalar i.e. loss)
+    :return:
+    """
+    # ummm... does this work?
+    _ = 1
+    with tf.contrib.summary.record_summaries_every_n_global_steps(logging_frequency):
+        tf.contrib.summary.scalar(name, val)
 
 
 class Generator(Model):
@@ -255,7 +259,7 @@ class DiscConnected(Model):
         :param kwargs:
         :return:
         """
-        training = tfe.Variable(training)
+        training = tfe.Variable(training)  # BOOL tensor - need this to be TRUE for the tf.keras.layers.BatchNormalization() to work at all .... seems bugged
 
         # local
         xl = self.lc1(cropped_imgs)
@@ -317,40 +321,46 @@ class ModelManager:
     """
     def __init__(
         self,
-        params,
+        optimizer='AdadeltaOptimizer',
+        lr=1.0,
+        alpha=0.0004,
+        load_ckpt_dir=None,
+        tb_log_dir='./tb_logs/'
     ):
         """
         manage the gan. we construct the discriminator and generator on initialization....... Note, these are not "compiled"
         yet, since we are using eager, they only get compiled when called
-        :param params: DICT - from argparser
+        :param optimizer: str - specifying module in tf.train.optimizer
+            * NOTE - as of now, this is used for BOTH GENERATOR and DISCRIMINATOR (which i think is how its in paper anyways??? )
+        :param lr: float - learning rate for optimizer
+            * NOTE - used for both gen and disc (i think as per paper also?)
+        :param alpha: float - weighting on discriminator loss it would seem
+        :param load_ckpt_dir: str or None - if not None, path to ckpt to be picked up.
+        :param tb_log_dir: str or None - if not None, logs the losses etc in the directory specified.
         """
         # super(ModelManager, self).__init__()
-        self.params = params
-        load_ckpt = self.params.load_ckpt  # this is inputted and tells if to load or not to load
+        self.alpha = alpha
         self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
-
-        # a note on base_save_dir -> normally, we do not need the "//" after "gs://" because os automatically infers it...
-        # however, using google storage, it throws an error without the front slashes.... so keep there there
-        self.base_save_dir = jp('gs://', self.params.staging_bucketname, self.params.job_dir)  # use this to construct paths if needed
-        self.ckpt_dir = jp(self.base_save_dir, 'ckpt/')  # where we throw out checkpoints AND SAME NOTE as above ~~~
-
         # optimizers ***** NOTE THESE might be different from paper
-        self.gen_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)
+        # NOTE paper: if using tf.losses.AdadeltaOptimizer use a learning rate of 1.0
+        self.gen_optimizer = getattr(tf.train, optimizer)(learning_rate=lr)
         self.gen_optimizer.__setattr__('name', 'gen_optimizer')  # necessary for checkpoint???
-        self.disc_optimizer = getattr(tf.train, self.params.optimizer)(learning_rate=self.params.learning_rate)  # NOTE THIS might be different from paper
+        self.disc_optimizer = getattr(tf.train, optimizer)(learning_rate=lr)
         self.disc_optimizer.__setattr__('name', 'disc_optimizer')
         # this is the generator model
         self.gen_model = Generator()  # need to checkpoint this... NOTE --- it's name is "generator_model"
         # full discriminator (i.e. global + local branch)
         self.disc_model = DiscConnected()  # need to checkpoint this... NOTE --- its name is disc_connected
 
-        # we need to explicitly global steps for each model
-        # self.disc_gs = tfe.Variable(0, name='disc_gs', dtype=tf.int64)  # we can save this in checkpoint
-        # self.gen_gs = tfe.Variable(0, name='gen_gs', dtype=tf.int64)  # we can save this in checkpoint
-        # self.global_step = tfe.Variable(0, name='gen_gs', dtype=tf.int64)
-        # keep track of "GLOBAL" epoch ----- overides in run_training_procedure
-        self.epoch = tfe.Variable(0, name='overall_epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
+        # keep track of epoch ----- overides in task.py run_job()
+        self.epoch = tfe.Variable(0, name='epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
 
+        # first sort out tensorboard logging
+        self.tb_logger = tf.contrib.summary.create_file_writer(tb_log_dir)
+        self.tb_logger.set_as_default()
+
+
+        # then checkpointing
         # we will create keyword args to throw into the checkpoint using the names of the self variables above
         # the keys are the names above and the values are the self.$varname
 
@@ -359,19 +369,18 @@ class ModelManager:
             'disc_optimizer': self.disc_optimizer,
             'generator_model': self.gen_model,
             'disc_connected': self.disc_model,
-            'overall_epoch': self.epoch
+            'epoch': self.epoch
         }
-
         self.checkpoint = tf.train.Checkpoint(**kwarg)
 
         # now if param use checkpoint is true, load up the checkpoint
         # in theory, this will alter all of the state variables defined above!
-        if load_ckpt:
-            print('RESTORING FROM CHECKPOINT from {}'.format(self.ckpt_dir))
-            self.checkpoint.restore(tf.train.latest_checkpoint(self.ckpt_dir))
+        if load_ckpt_dir is not None:
+            print('RESTORING FROM CHECKPOINT from {}'.format(load_ckpt_dir))
+            self.checkpoint.restore(tf.train.latest_checkpoint(load_ckpt_dir))
             print('sanity check - loaded epoch ... {}'.format(self.epoch))
+
         else:
-            # DELETE THE DIRECTORY ....
             print('WARN ---- not picking up any checkpoints')
             # we should really delete the folder contents in this case ...
 
@@ -382,7 +391,7 @@ class ModelManager:
         :param y: tensor - the acutal images
         :param training: bool - to train or not to? (NOTE always set this to true, otherwise
             inferrence will yield nans (potential bug))) BITCH
-        :return:
+        :return: mse loss, predictions
         """
         output = self.gen_model(x, training=training)
         return tf.losses.mean_squared_error(predictions=output, labels=y), output
@@ -396,7 +405,7 @@ class ModelManager:
         :param training: BOOL - training or not ?? for batchnorm layers - NOTE bugged when this is true....
             PLEASE SET THIS TO TRUE when inffering .... for somereason fucks up when false..... ???? need to look
             into this
-        :return:
+        :return: sigmoid xentropy loss
         """
         return tf.losses.sigmoid_cross_entropy(logits=self.disc_model(x, xx, training=training),
                                                multi_class_labels=y)
@@ -414,6 +423,7 @@ class ModelManager:
             # loss_value = tf.losses.mean_squared_error(labels, predicted)
             loss_value, _ = self._gen_loss(x=imgs, y=labels, training=True)
 
+        log_scalar('generator_loss', loss_value.numpy())
         self.gen_loss_history.append(loss_value.numpy())  # track the loss in a variable
         grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
         self.gen_optimizer.apply_gradients(
@@ -437,6 +447,7 @@ class ModelManager:
         with tf.GradientTape() as tape:
             loss_value = self._disc_loss(imgs, masked_imgs, labels, training=True)
 
+        log_scalar('discriminator_loss', loss_value.numpy())
         self.disc_loss_history.append(loss_value.numpy())
         grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
         self.disc_optimizer.apply_gradients(
@@ -467,8 +478,9 @@ class ModelManager:
                 roi_imgs_gen = extract_roi_imgs(output_gen, points)
                 loss_value_disc = self._disc_loss(output_gen, roi_imgs_gen, valid, training=True)
                 # combine the losses with the paramater alpha... (* SHOULD THIS BE HERE? or in weights.. ? )
-                loss = tf.add(loss_value_gen, tf.multiply(loss_value_disc, self.params.alpha))
+                loss = tf.add(loss_value_gen, tf.multiply(loss_value_disc, self.alpha))
 
+            log_scalar('combined_loss', loss.numpy())
             # train the generator (note - discriminator has already been trainined! )
             grads_gen = tape_gen.gradient(loss, self.gen_model.trainable_variables)
             self.gen_optimizer.apply_gradients(
@@ -481,81 +493,3 @@ class ModelManager:
 
         self.brain_history.append(loss)
         return loss, loss_value_gen
-
-    def run_training_procedure(self, data_gen):
-        # train over time
-        # g_epochs = int(self.params.num_epochs * 0.18)
-        # d_epochs = int(self.params.num_epochs * 0.02)
-        g_epochs = 2
-        d_epochs = 2
-        generated_imgs = None  # redundant... but to stop warning
-        init_epoch = self.epoch.numpy()
-        for epoch in range(init_epoch, self.params.num_epochs):
-            print('\nstarting epoch {}\n'.format(epoch))
-            # progress bar visualization (comment out in ML Engine)
-            prog_cap = 300000000 if self.params.max_img_cnt is None else self.params.max_img_cnt
-            progbar = generic_utils.Progbar(prog_cap)
-            for images, masks, points in data_gen.flow(batch_size=self.params.train_batch_size):
-
-                # batch of images made into a tensor size [batch_size, im_dim_x, im_dim_y, channel)
-                images = tf.cast(images, tf.float32)
-
-                # this is the masks in zeros and ones made into a tensor these are [bs, randomx, randomy, 1] shape
-                masks = tf.cast(masks, tf.float32)
-
-                # these are the images with the patches blacked out (i.e. set to zero) - same size as images
-                erased_imgs = tf.multiply(images, tf.subtract(tf.constant(1, dtype=tf.float32), masks))
-
-                # generate predictions on the erased images
-                generated_imgs = self.gen_model(erased_imgs, training=True)  # FOR SOME REASON PREDICTING WITH TRAINING=FALSE GIVES NANS
-
-                # generate the labels
-                valid = np.ones((self.params.train_batch_size, 1))
-                fake = np.zeros((self.params.train_batch_size, 1))
-                # the gen and disc losses
-                g_loss = tfe.Variable(0)
-                d_loss = tfe.Variable(0)
-                combined_loss = tfe.Variable(0)
-
-                # we must train the neural nets seperately, and then together
-                # train generator for 90k epochs
-                if epoch < g_epochs:
-                    # set the gen loss
-                    # get the loss from the batch
-
-                    g_loss = self.train_gen(erased_imgs, images)
-
-                # train discriminator alone for 90k epochs
-                # then train disc + gen for another 400k epochs. Total of 500k
-                else:
-                    roi_imgs_real, roi_imgs_fake = extract_roi_imgs(images, points), extract_roi_imgs(erased_imgs, points)
-                    d_loss_real = self.train_disc(images, roi_imgs_real, valid)
-                    d_loss_fake = self.train_disc(generated_imgs, roi_imgs_fake, fake)
-
-                    # # throw in real unedited images with label VALID
-                    # d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
-                    # # throw in A.I. generated images with label FAKE
-                    # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
-                    # # combine and set the disc loss
-                    d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
-                    if epoch >= g_epochs + d_epochs:
-                        # train the entire brain
-                        combined_loss, g_loss = self.train_full_brain(erased_imgs, images, points, fake)
-                        # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
-
-                # progress bar visualization (comment out in ML Engine)
-                progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy()), ("Combined Loss: ", combined_loss.numpy())])
-
-            # increment the self.epoch  -> we need to do this so that the checkpoint is accurate....
-            self.epoch.assign_add(1)
-            if epoch % self.params.epoch_save_frequency == 0 and epoch > 0:
-                # save check_point
-                print('saving checkpoint {}'.format(self.ckpt_dir))
-                self.checkpoint.save(self.ckpt_dir)
-                # save a generated image for peace of mind
-                if generated_imgs is not None:
-                    last_img = generated_imgs[0]
-                    last_img *= 255
-                    dreamt_image = Image.fromarray(np.asarray(last_img, dtype='uint8'), 'RGB')
-                    output_image_path = jp(self.base_save_dir, 'images', 'epoch_{}_image.png'.format(epoch))
-                    save_img(save_path=output_image_path, img_data=dreamt_image)

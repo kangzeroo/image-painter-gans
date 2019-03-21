@@ -1,7 +1,17 @@
 import argparse
 import tensorflow as tf
+import tensorflow.contrib.eager as tfe
 import os
+import numpy as np
 from datetime import datetime
+from keras.utils import generic_utils
+from PIL import Image
+
+try:
+    from utils import save_img, extract_roi_imgs, save_model
+except Exception as e:
+    from trainer.utils import save_img, extract_roi_imgs, save_model
+
 
 # enable eager execution......
 # QUESTION - do we need to call this in model.py also for example???
@@ -43,7 +53,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=1  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -59,7 +69,7 @@ def initialize_hyper_params(args_parser):
         '--gen-loss',
         help="""\
             The loss function for generator\
-            * I dont think this is actually hooked up (should be implemented)
+            * THIS IS NOT hooked up (should be implemented) -- currently hardcoded in model.py
             """,
         default='mse',
         type=str,
@@ -68,7 +78,7 @@ def initialize_hyper_params(args_parser):
         '--disc-loss',
         help="""\
             The loss function for discriminator\
-            * I dont think this is used.. (should be implemented)
+            * THIS IS NOT hooked up (should be implemented) -- currently hardcoded in model.py
             """,
         default='binary_crossentropy',
         type=str,
@@ -96,7 +106,7 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="output_SANITY_onvalidation",
+        default="testing",
         type=str,
     )
     args_parser.add_argument(
@@ -107,13 +117,21 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--load-ckpt',
-        default=False,
+        default=True,
         type=bool,
         help="""\
             True or False specifying if to load the checkpoint
             file. If True, loads the highest epoch found in the
             ckpt folder in the output dir. If False, goes along
             as normal without loading any checkpoint"""
+    )
+    args_parser.add_argument(
+        '--save-weights',
+        help="""\
+            Whether or not to save the weights
+            """,
+        default=False,
+        type=bool,
     )
     args_parser.add_argument(
         '--optimizer',
@@ -135,7 +153,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=300,  # NOTE 300 imgs in validation set
+        default=2,  # NOTE 300 imgs in validation set
         type=int
     )
     # Argument to turn on all logging
@@ -152,6 +170,115 @@ def initialize_hyper_params(args_parser):
     )
 
     return args_parser.parse_args()
+
+
+def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=1, d_epochs=1):
+    """
+    run the job ... paramaters are assumed to have been preloaded upon initialization in model_mng.
+
+    Supports model_mng checkpointing, training the generator and discriminator both separately and jointly depending on
+    the input paramater epochs (currently defaulted)
+
+    :param params: HYPER_PARAMS inputted
+    :param model_mng: model_manager, already initialized
+    :param data_gen: data generator
+    :param g_epochs: INT - # epochs for generator IN PAPER = int(self.params.num_epochs * 0.18)
+    :param d_epochs: INT - # epochs for discriminator IN PAPER = int(self.params.num_epochs * 0.02)
+    :return:
+    """
+    # train baby bitch
+    if g_epochs != int(params.num_epochs * 0.18) or int(params.num_epochs * 0.02):
+        print('###### WARN - generator or discriminator epochs are not default as paper!!!')
+
+    # where we save weights (NOT FULLY IMPLEMENTED / VALIDATED)
+    model_save_dir = os.path.join(base_save_dir, 'models/')
+
+    generated_imgs = None  # redundant... but to stop warning in IDE
+    init_epoch = model_mng.epoch.numpy()
+    for epoch in range(init_epoch, params.num_epochs):
+        print('\nstarting epoch {}\n'.format(epoch))
+        # progress bar visualization (comment out in ML Engine)
+        prog_cap = 300000000 if params.max_img_cnt is None else params.max_img_cnt
+        progbar = generic_utils.Progbar(prog_cap)
+        for images, masks, points in data_gen.flow(batch_size=params.train_batch_size):
+
+            # batch of images made into a tensor size [batch_size, im_dim_x, im_dim_y, channel)
+            images = tf.cast(images, tf.float32)
+
+            # this is the masks in zeros and ones made into a tensor these are [bs, randomx, randomy, 1] shape
+            masks = tf.cast(masks, tf.float32)
+
+            # these are the images with the patches blacked out (i.e. set to zero) - same size as images
+            erased_imgs = tf.multiply(images, tf.subtract(tf.constant(1, dtype=tf.float32), masks))
+
+            # generate predictions on the erased images
+            generated_imgs = model_mng.gen_model(erased_imgs,
+                                            training=True)  # FOR SOME REASON PREDICTING WITH TRAINING=FALSE GIVES NANS
+
+            # generate the labels
+            valid = np.ones((params.train_batch_size, 1))
+            fake = np.zeros((params.train_batch_size, 1))
+            # the gen and disc losses
+            g_loss = tfe.Variable(0)
+            d_loss = tfe.Variable(0)
+            combined_loss = tfe.Variable(0)
+
+            # we must train the neural nets seperately, and then together
+            # train generator for 90k epochs
+            if epoch < g_epochs:
+                # set the gen loss
+                # get the loss from the batch
+
+                g_loss = model_mng.train_gen(erased_imgs, images)
+
+            # train discriminator alone for 90k epochs
+            # then train disc + gen for another 400k epochs. Total of 500k
+            else:
+                roi_imgs_real, roi_imgs_fake = extract_roi_imgs(images, points), extract_roi_imgs(erased_imgs, points)
+                d_loss_real = model_mng.train_disc(images, roi_imgs_real, valid)
+                d_loss_fake = model_mng.train_disc(generated_imgs, roi_imgs_fake, fake)
+
+                # # throw in real unedited images with label VALID
+                # d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
+                # # throw in A.I. generated images with label FAKE
+                # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
+                # # combine and set the disc loss
+                d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
+                if epoch >= g_epochs + d_epochs:
+                    # train the entire brain
+                    combined_loss, g_loss = model_mng.train_full_brain(erased_imgs, images, points, fake)
+                    # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
+
+            # progress bar visualization (comment out in ML Engine)
+            progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy()),
+                                                      ("Combined Loss: ", combined_loss.numpy())])
+
+        # increment the self.epoch  -> we need to do this so that the checkpoint is accurate....
+        model_mng.epoch.assign_add(1)  # note this might be stupid --- can lead to desynchronization ...
+        # might consider just setting model_mng.epoch = tensor(epoch) for example.
+        if epoch % params.epoch_save_frequency == 0 and epoch > 0:
+            # save check_point - THESE GET PICKED UP IF SPECIFIED
+            print('saving checkpoint {}'.format(ckpt_dir))
+            model_mng.checkpoint.save(ckpt_dir)
+            if params.save_weights:
+                # NOTE - this is not full implemented or tested ~~~~~~~~
+                # save the model weights and architecture... these dont get used because we pick up checkpoints FYI
+                # note this is pretty slow tbh
+                save_model(
+                    model=model_mng.gen_model,
+                    save_path=os.path.join(model_save_dir, 'generator_epoch_{}'.format(epoch))
+                )
+                save_model(
+                    model=model_mng.disc_model,
+                    save_path=os.path.join(model_save_dir, 'discriminator_epoch_{}'.format(epoch))
+                )
+            # save a generated image for peace of mind
+            if generated_imgs is not None:
+                last_img = generated_imgs[0]
+                last_img *= 255
+                dreamt_image = Image.fromarray(np.asarray(last_img, dtype='uint8'), 'RGB')
+                output_image_path = os.path.join(base_save_dir, 'images', 'epoch_{}_image.png'.format(epoch))
+                save_img(save_path=output_image_path, img_data=dreamt_image)
 
 
 def main(params,
@@ -174,11 +301,30 @@ def main(params,
     # Set C++ Graph Execution level verbosity  ------- dont know what this is
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[params.verbosity] / 10)
 
-    # finally initialize the data generator
+    # we will initialize some saving parameters
+    # a note on base_save_dir -> normally, we do not need the "//" after "gs://" because os automatically infers it...
+    # however, using google storage, it throws an error without the front slashes.... so keep there there
+    base_save_dir = os.path.join('gs://', params.staging_bucketname,
+                            params.job_dir)  # use this to construct paths if needed
+
+    ckpt_dir = os.path.join(base_save_dir, 'ckpt/')
+    tb_log_dir = os.path.join(base_save_dir, 'tb_logs/')  # save tensorboard logs
+
+    print('base saving directory: {}'.format(base_save_dir))
+    print('checkpoint folder: {}'.format(ckpt_dir))
+    print('tensorboard logging: {}'.format(tb_log_dir))
+
+    # initialize model_mng and datagenerator
     train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
     # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
-    mng = ModelManager(params)
-
+    load_ckpt_dir = ckpt_dir if params.load_ckpt else None  # if None - does not search / load any checkpoints (models)
+    mng = ModelManager(
+        optimizer=params.optimizer,
+        lr=params.learning_rate,
+        alpha=params.alpha,
+        load_ckpt_dir=load_ckpt_dir,
+        tb_log_dir=tb_log_dir
+    )
 
     # Run the experiment
     time_start = datetime.utcnow()
@@ -187,7 +333,8 @@ def main(params,
     print(".......................................")
 
     # the actual call to run the experiment
-    mng.run_training_procedure(train_datagen)
+    # mng.run_training_procedure(train_datagen)
+    run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, ckpt_dir=ckpt_dir)
 
     time_end = datetime.utcnow()
     print(".......................................")
@@ -197,8 +344,6 @@ def main(params,
     print("Experiment elapsed time: {} seconds".format(time_elapsed.total_seconds()))
     print("")
 
-
-# not really sure the timming with this.... like I guess it is called on import ... ? Before __main__ obviously
 argument_parser = argparse.ArgumentParser()
 HYPER_PARAMS = initialize_hyper_params(argument_parser)
 

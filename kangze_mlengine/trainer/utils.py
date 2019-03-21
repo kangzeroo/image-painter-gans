@@ -1,7 +1,35 @@
 import tensorflow as tf
 from tensorflow.python.lib.io import file_io
 from keras.utils import plot_model
-# import pdb  # for debug
+
+
+def save_model(model, save_path):
+    """
+    saves the models weights and architecture.
+
+    Note - tried to use model.save() but got a NotImplemented Error, so
+           we need to save like this (weights + architecture) it seems
+           EDIT - cant save architecture (see note below) ... only saving the weights here... :(
+                  its okay though because we dont even use these (typically we load up a model from the ckpts).
+
+    :param model:
+    :param save_name:
+    :return:
+    """
+    # NOTE - SAVING LIKE THE FOLLOWING GIVES ME A NON-IMPLEMENTED ERROR ON MY LAPTOP --- might be different on gcloud,
+    #        havent tried. If you want you can wrap the following in a try except, and put the current way in the
+    #        except
+    # model.save(save_name)
+
+    weights_save_name = save_path + '-weights'
+    # arch_save_name = save_name + '-model'
+    print('saving weights {}'.format(weights_save_name))
+    model.save_weights(weights_save_name)
+    # save the architecture in a json ?
+    # json_model = model.to_json()  # -> NotImplementedError FUCK BITCH
+    # NOTE - saving the architecture always results in a NotImplementedError .... so just leaving as is (i.e. we only
+    #        the weights) ... A quick read said it should work if we specify input shape ... but im too fucking lazy for
+    #        that shit rn
 
 
 def extract_roi_imgs(images, points):
