@@ -5,22 +5,9 @@ from tensorflow.keras import Model
 
 
 try:
-    from utils import save_img, extract_roi_imgs
+    from utils import save_img, extract_roi_imgs, log_scalar
 except Exception as e:
-    from trainer.utils import save_img, extract_roi_imgs
-
-
-def log_scalar(name, val, logging_frequency=1):
-    """
-    tensorboard logs "name" with value = val
-    :param name: str - name of paramater
-    :param val: value of paramater (scalar i.e. loss)
-    :return:
-    """
-    # ummm... does this work?
-    _ = 1
-    with tf.contrib.summary.record_summaries_every_n_global_steps(logging_frequency):
-        tf.contrib.summary.scalar(name, val)
+    from trainer.utils import save_img, extract_roi_imgs, log_scalar
 
 
 class Generator(Model):
@@ -363,7 +350,6 @@ class ModelManager:
         # then checkpointing
         # we will create keyword args to throw into the checkpoint using the names of the self variables above
         # the keys are the names above and the values are the self.$varname
-
         kwarg = {
             'gen_optimizer': self.gen_optimizer,
             'disc_optimizer': self.disc_optimizer,
@@ -447,7 +433,6 @@ class ModelManager:
         with tf.GradientTape() as tape:
             loss_value = self._disc_loss(imgs, masked_imgs, labels, training=True)
 
-        log_scalar('discriminator_loss', loss_value.numpy())
         self.disc_loss_history.append(loss_value.numpy())
         grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
         self.disc_optimizer.apply_gradients(

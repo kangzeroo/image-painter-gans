@@ -8,9 +8,9 @@ from keras.utils import generic_utils
 from PIL import Image
 
 try:
-    from utils import save_img, extract_roi_imgs, save_model
+    from utils import save_img, extract_roi_imgs, save_model, log_scalar
 except Exception as e:
-    from trainer.utils import save_img, extract_roi_imgs, save_model
+    from trainer.utils import save_img, extract_roi_imgs, save_model, log_scalar
 
 
 # enable eager execution......
@@ -226,28 +226,23 @@ def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=
             # we must train the neural nets seperately, and then together
             # train generator for 90k epochs
             if epoch < g_epochs:
-                # set the gen loss
-                # get the loss from the batch
-
+                # train generator
                 g_loss = model_mng.train_gen(erased_imgs, images)
 
             # train discriminator alone for 90k epochs
             # then train disc + gen for another 400k epochs. Total of 500k
             else:
                 roi_imgs_real, roi_imgs_fake = extract_roi_imgs(images, points), extract_roi_imgs(erased_imgs, points)
+                # train the discriminator
                 d_loss_real = model_mng.train_disc(images, roi_imgs_real, valid)
                 d_loss_fake = model_mng.train_disc(generated_imgs, roi_imgs_fake, fake)
 
-                # # throw in real unedited images with label VALID
-                # d_loss_real = self.mng.disc_brain.train_on_batch([images, points], valid)
-                # # throw in A.I. generated images with label FAKE
-                # d_loss_fake = self.mng.disc_brain.train_on_batch([generated_img, points], fake)
                 # # combine and set the disc loss
                 d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
+                log_scalar('discriminator_loss', d_loss)
                 if epoch >= g_epochs + d_epochs:
-                    # train the entire brain
+                    # train the entire brain (note this only updates the generator - but uses joint loss gen + disc)
                     combined_loss, g_loss = model_mng.train_full_brain(erased_imgs, images, points, fake)
-                    # g_loss = self.mng.brain.train_on_batch([images, masks, erased_imgs, points], [images, valid])
 
             # progress bar visualization (comment out in ML Engine)
             progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy()),

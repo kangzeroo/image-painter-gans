@@ -86,3 +86,17 @@ def save_img(save_path, img_data):
     with file_io.FileIO(save_path, 'wb') as f:
         print('\nsaving image at {}\n'.format(save_path))
         img_data.save(f, "PNG")
+
+
+def log_scalar(name, val, logging_frequency=1):
+    """
+    tensorboard logs "name" with value = val
+
+    ??? does this work in utils?
+
+    :param name: str - name of paramater
+    :param val: value of paramater (scalar i.e. loss)
+    :return:
+    """
+    with tf.contrib.summary.record_summaries_every_n_global_steps(logging_frequency):
+        tf.contrib.summary.scalar(name, val)
