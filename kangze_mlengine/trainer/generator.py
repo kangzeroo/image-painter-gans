@@ -81,7 +81,6 @@ def preprocess_img(img, target_size):
 
 
 class DataGenerator(object):
-    # initialize by retreiving the photos
     def __init__(self,
              params,
              image_size,
@@ -103,46 +102,47 @@ class DataGenerator(object):
         self.image_size = image_size
         self.local_size = local_size
 
-    def flow(self, batch_size, hole_min=64, hole_max=128):
+    def flow_from_directory(self, batch_size, hole_min=64, hole_max=128):
         """
-        iterates over img_dir and does preprocessing. computes random masks on the fly.
+        iterates over img_dir indefinitely and does preprocessing. computes random masks on the fly. loops indefinitely
         :param batch_size: INT - the size of the current batch
         :param hole_min: INT -
         :param hole_max: INT -
         :return:
         """
-        images, masks, points = [], [], []
-        # for now we get max self.count photos and add them to self.img_file_list
-        for img_cnt, blob in enumerate(bucket.list_blobs(prefix=self.params.img_dir)):
-            # np.random.shuffle(self.img_file_list)
-            if self.max_img_cnt and img_cnt >= self.max_img_cnt:
-                print('max image count of {} reached... breaking'.format(self.max_img_cnt))
-                break
-            img_url = blob.name
-            with file_io.FileIO('gs://{}/{}'.format(self.params.bucketname, img_url), 'rb') as f:
-                # and use PIL to convert into an RGB image
-                img = Image.open(f).convert('RGB')
-                # then convert the RGB image to an array so that cv2 can read it
-                img = np.asarray(img, dtype="uint8")
+        while True:
+            images, masks, points = [], [], []
+            # for now we get max self.count photos and add them to self.img_file_list
+            for img_cnt, blob in enumerate(bucket.list_blobs(prefix=self.params.img_dir)):
+                # np.random.shuffle(self.img_file_list)
+                if self.max_img_cnt and img_cnt >= self.max_img_cnt:
+                    print('max image count of {} reached... breaking'.format(self.max_img_cnt))
+                    break
+                img_url = blob.name
+                with file_io.FileIO('gs://{}/{}'.format(self.params.bucketname, img_url), 'rb') as f:
+                    # and use PIL to convert into an RGB image
+                    img = Image.open(f).convert('RGB')
+                    # then convert the RGB image to an array so that cv2 can read it
+                    img = np.asarray(img, dtype="uint8")
 
-                # NOTE the following function randomly crops the image so it has same aspect ratio as image_size, then
-                # it resizes it using cv2 to image_size (this prevents like curved beds etc from warping presumably).
-                img = preprocess_img(img, target_size=self.image_size)
+                    # NOTE the following function randomly crops the image so it has same aspect ratio as image_size, then
+                    # it resizes it using cv2 to image_size (this prevents like curved beds etc from warping presumably).
+                    img = preprocess_img(img, target_size=self.image_size)
 
-                # to look at imgs use - plt.imshow(img_resized[0, :, :, ])  (plt == matplotlib.pyplot)
-                images.append(img)
+                    # to look at imgs use - plt.imshow(img_resized[0, :, :, ])  (plt == matplotlib.pyplot)
+                    images.append(img)
 
-                # get the mask and the bounding box points
-                m, pts = mask_img(self.image_size, self.local_size, hole_min=hole_min, hole_max=hole_max)
+                    # get the mask and the bounding box points
+                    m, pts = mask_img(self.image_size, self.local_size, hole_min=hole_min, hole_max=hole_max)
 
-                # finally append them to the main tings
-                masks.append(m)
-                points.append(pts)
+                    # finally append them to the main tings
+                    masks.append(m)
+                    points.append(pts)
 
-                # yield the batch of data when batch size reached
-                if len(images) == batch_size:
-                    # this probably wastes some memory needlessly...
-                    ii, mm, pp = np.asarray(images).copy(), masks.copy(), points.copy()
-                    # probably a better way to do this stupid shit
-                    images, masks, points = [], [], []
-                    yield ii, mm, pp
+                    # yield the batch of data when batch size reached
+                    if len(images) == batch_size:
+                        # this probably wastes some memory needlessly...
+                        ii, mm, pp = np.asarray(images).copy(), masks.copy(), points.copy()
+                        # probably a better way to do this stupid shit
+                        images, masks, points = [], [], []
+                        yield ii, mm, pp

@@ -66,6 +66,14 @@ def initialize_hyper_params(args_parser):
         type=int,
     )
     args_parser.add_argument(
+        '--steps-per-epoch',
+        help="""\
+            Number of steps per epoch.
+            """,
+        default=3,
+        type=int,
+    )
+    args_parser.add_argument(
         '--gen-loss',
         help="""\
             The loss function for generator\
@@ -153,7 +161,7 @@ def initialize_hyper_params(args_parser):
         '--max-img-cnt',
         help="Number of maximum images to look at. Set to None if you"
              "want the whole dataset. Primarily used for testing purposes.",
-        default=2,  # NOTE 300 imgs in validation set
+        default=None,  # NOTE 300 imgs in validation set
         type=int
     )
     # Argument to turn on all logging
@@ -186,6 +194,9 @@ def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=
     :param d_epochs: INT - # epochs for discriminator IN PAPER = int(self.params.num_epochs * 0.02)
     :return:
     """
+
+    data_generator = data_gen.flow_from_directory(batch_size=params.train_batch_size)
+
     # train baby bitch
     if g_epochs != int(params.num_epochs * 0.18) or int(params.num_epochs * 0.02):
         print('###### WARN - generator or discriminator epochs are not default as paper!!!')
@@ -195,12 +206,16 @@ def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=
 
     generated_imgs = None  # redundant... but to stop warning in IDE
     init_epoch = model_mng.epoch.numpy()
+    prog_cap = params.steps_per_epoch*params.train_batch_size if params.max_img_cnt is None else params.max_img_cnt
+    progbar = generic_utils.Progbar(prog_cap)
     for epoch in range(init_epoch, params.num_epochs):
+        # loop over all the steps
         print('\nstarting epoch {}\n'.format(epoch))
         # progress bar visualization (comment out in ML Engine)
-        prog_cap = 300000000 if params.max_img_cnt is None else params.max_img_cnt
-        progbar = generic_utils.Progbar(prog_cap)
-        for images, masks, points in data_gen.flow(batch_size=params.train_batch_size):
+        for __ in range(0, params.steps_per_epoch):
+
+            # for each step, we get the data from the generator
+            images, masks, points = next(data_generator)
 
             # batch of images made into a tensor size [batch_size, im_dim_x, im_dim_y, channel)
             images = tf.cast(images, tf.float32)
@@ -253,7 +268,7 @@ def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=
         # might consider just setting model_mng.epoch = tensor(epoch) for example.
         if epoch % params.epoch_save_frequency == 0 and epoch > 0:
             # save check_point - THESE GET PICKED UP IF SPECIFIED
-            print('saving checkpoint {}'.format(ckpt_dir))
+            print('\nsaving checkpoint {}\n'.format(ckpt_dir))
             model_mng.checkpoint.save(ckpt_dir)
             if params.save_weights:
                 # NOTE - this is not full implemented or tested ~~~~~~~~
