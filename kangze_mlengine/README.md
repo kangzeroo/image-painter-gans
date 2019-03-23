@@ -33,7 +33,7 @@ inside image-painter-gans
 remember to change paths in task... (need to fix this)
 
 $ gcloud ml-engine jobs submit training $JOB_NAME \
-                                    --module-name trainer.task \
+                                    --module-name trainer.task_upgraded \
                                     --package-path trainer \
                                     --python-version 3.5 \
                                     --runtime-version 1.4 \
