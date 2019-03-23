@@ -46,7 +46,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=5  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -107,7 +107,7 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="testing_tensorflow_v2",
+        default="testing_tensorflow_v2_3workers",
         type=str,
     )
     args_parser.add_argument(
@@ -173,24 +173,73 @@ def initialize_hyper_params(args_parser):
     return args_parser.parse_args()
 
 
-def run_job(params, model_mng, data_gen, base_save_dir, tb_log_dir=None, ckpt_dir=None, g_epochs=2, d_epochs=2):
+def main(params,
+         global_shape=(256, 256, 3),
+         local_shape=(128, 128, 3),
+         g_epochs=2,
+         d_epochs=2):
     """
-    run the job ... paramaters are assumed to have been preloaded upon initialization in model_mng.
-
-    Supports model_mng checkpointing, training the generator and discriminator both separately and jointly depending on
-    the input paramater epochs (currently defaulted)
-
-    :param params: HYPER_PARAMS inputted
-    :param model_mng: model_manager, already initialized
-    :param data_gen: data generator
-    :param g_epochs: INT - # epochs for generator IN PAPER = int(self.params.num_epochs * 0.18)
-    :param d_epochs: INT - # epochs for discriminator IN PAPER = int(self.params.num_epochs * 0.02)
-    :return:
+    TRAIN A BITCH
+    :param params: dict - from argparser the paramaters of erting
+    :param global_shape: tuple - assumed RGB - the shape inputted to the net
+    :param local_shape: tuple - assumed RGB - local
     """
 
+    # peace of mind
+    print('Hyper-parameters:')
+    print(params)
+
+    # multi gpu
+    # strategy = tf.distribute.MirroredStrategy(devices=["/device:GPU:0", "/device:GPU:1", "/device:GPU:2"])
+    # strategy = tf.compat.v1.distribute.MirroredStrategy(num_gpus=3)
+
+    # tf.contrib.distribute.MirroredStrategy(num_gpus=2)
+    strategy = tf.distribute.MirroredStrategy()
+    print('found {} machines'.format(strategy.num_replicas_in_sync))
+
+    # Set python level verbosity
+    tf.compat.v1.logging.set_verbosity(params.verbosity)
+
+    # Set C++ Graph Execution level verbosity  ------- dont know what this is
+    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[params.verbosity] / 10)
+
+    # we will initialize some saving parameters
+    # a note on base_save_dir -> normally, we do not need the "//" after "gs://" because os automatically infers it...
+    # however, using google storage, it throws an error without the front slashes.... so keep there there
+    base_save_dir = os.path.join('gs://', params.staging_bucketname,
+                            params.job_dir)  # use this to construct paths if needed
+
+    ckpt_dir = os.path.join(base_save_dir, 'ckpt/')
+    tb_log_dir = os.path.join(base_save_dir, 'tb_logs/')  # save tensorboard logs
+
+    print('base saving directory: {}'.format(base_save_dir))
+    print('checkpoint folder: {}'.format(ckpt_dir))
+    print('tensorboard logging: {}'.format(tb_log_dir))
+
+    # initialize model_mng and datagenerator
+    train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
+    # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
+    load_ckpt_dir = ckpt_dir if params.load_ckpt else None  # if None - does not search / load any checkpoints (models)
+    with strategy.scope():
+        model_mng = ModelManager(
+            optimizer=params.optimizer,
+            lr=params.learning_rate,
+            alpha=params.alpha,
+            load_ckpt_dir=load_ckpt_dir,
+        )
+
+    # Run the experiment
+    time_start = datetime.utcnow()
+    print("")
+    print("Experiment started at {}".format(time_start.strftime("%H:%M:%S")))
+    print(".......................................")
+
+    # # the actual call to run the experiment
+    # # mng.run_training_procedure(train_datagen)
+    # run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, ckpt_dir=ckpt_dir, tb_log_dir=tb_log_dir)
     tb_logger = tf.summary.create_file_writer(tb_log_dir)
 
-    data_generator = data_gen.flow_from_directory(batch_size=params.train_batch_size)
+    data_generator = train_datagen.flow_from_directory(batch_size=params.train_batch_size)
 
     # train baby bitch
     if g_epochs != int(params.num_epochs * 0.18) or int(params.num_epochs * 0.02):
@@ -201,7 +250,7 @@ def run_job(params, model_mng, data_gen, base_save_dir, tb_log_dir=None, ckpt_di
 
     generated_imgs = None  # redundant... but to stop warning in IDE
     init_epoch = model_mng.epoch.numpy()
-    prog_cap = params.steps_per_epoch*params.train_batch_size if params.max_img_cnt is None else params.max_img_cnt
+    prog_cap = params.steps_per_epoch * params.train_batch_size if params.max_img_cnt is None else params.max_img_cnt
     for epoch in range(init_epoch, params.num_epochs):
         # loop over all the steps
         print('\nstarting epoch {}\n'.format(epoch))
@@ -223,7 +272,7 @@ def run_job(params, model_mng, data_gen, base_save_dir, tb_log_dir=None, ckpt_di
 
             # generate predictions on the erased images
             generated_imgs = model_mng.gen_model(erased_imgs,
-                                            training=True)  # FOR SOME REASON PREDICTING WITH TRAINING=FALSE GIVES NANS
+                                                 training=True)  # FOR SOME REASON PREDICTING WITH TRAINING=FALSE GIVES NANS
 
             # generate the labels
             valid = np.ones((params.train_batch_size, 1))
@@ -262,7 +311,8 @@ def run_job(params, model_mng, data_gen, base_save_dir, tb_log_dir=None, ckpt_di
                                                       ("Combined Loss: ", combined_loss.numpy())])
 
         # increment the self.epoch  -> we need to do this so that the checkpoint is accurate....
-        model_mng.epoch.assign_add(1)  # note this might be stupid --- can lead to desynchronization ...
+        with strategy.scope():
+            model_mng.epoch.assign_add(1)  # note this might be stupid --- can lead to desynchronization ...
         # might consider just setting model_mng.epoch = tensor(epoch) for example.
         if epoch % params.epoch_save_frequency == 0 and epoch > 0:
             # write to tensorboard
@@ -295,59 +345,6 @@ def run_job(params, model_mng, data_gen, base_save_dir, tb_log_dir=None, ckpt_di
                 save_img(save_path=output_image_path, img_data=dreamt_image)
 
 
-def main(params,
-         global_shape=(256, 256, 3),
-         local_shape=(128, 128, 3)):
-    """
-    TRAIN A BITCH
-    :param params: dict - from argparser the paramaters of erting
-    :param global_shape: tuple - assumed RGB - the shape inputted to the net
-    :param local_shape: tuple - assumed RGB - local
-    """
-
-    # peace of mind
-    print('Hyper-parameters:')
-    print(params)
-
-    # Set python level verbosity
-    tf.compat.v1.logging.set_verbosity(params.verbosity)
-
-    # Set C++ Graph Execution level verbosity  ------- dont know what this is
-    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[params.verbosity] / 10)
-
-    # we will initialize some saving parameters
-    # a note on base_save_dir -> normally, we do not need the "//" after "gs://" because os automatically infers it...
-    # however, using google storage, it throws an error without the front slashes.... so keep there there
-    base_save_dir = os.path.join('gs://', params.staging_bucketname,
-                            params.job_dir)  # use this to construct paths if needed
-
-    ckpt_dir = os.path.join(base_save_dir, 'ckpt/')
-    tb_log_dir = os.path.join(base_save_dir, 'tb_logs/')  # save tensorboard logs
-
-    print('base saving directory: {}'.format(base_save_dir))
-    print('checkpoint folder: {}'.format(ckpt_dir))
-    print('tensorboard logging: {}'.format(tb_log_dir))
-
-    # initialize model_mng and datagenerator
-    train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
-    # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
-    load_ckpt_dir = ckpt_dir if params.load_ckpt else None  # if None - does not search / load any checkpoints (models)
-    mng = ModelManager(
-        optimizer=params.optimizer,
-        lr=params.learning_rate,
-        alpha=params.alpha,
-        load_ckpt_dir=load_ckpt_dir,
-    )
-
-    # Run the experiment
-    time_start = datetime.utcnow()
-    print("")
-    print("Experiment started at {}".format(time_start.strftime("%H:%M:%S")))
-    print(".......................................")
-
-    # the actual call to run the experiment
-    # mng.run_training_procedure(train_datagen)
-    run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, ckpt_dir=ckpt_dir, tb_log_dir=tb_log_dir)
 
     time_end = datetime.utcnow()
     print(".......................................")
