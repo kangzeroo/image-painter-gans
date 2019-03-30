@@ -46,7 +46,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=1  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--num-epochs',
@@ -55,7 +55,7 @@ def initialize_hyper_params(args_parser):
             If both --train-size and --num-epochs are specified,
             --train-steps will be: (train-size/train-batch-size) * num-epochs.\
             """,
-        default=50,
+        default=50000,
         type=int,
     )
     args_parser.add_argument(
@@ -63,7 +63,7 @@ def initialize_hyper_params(args_parser):
         help="""\
             Number of steps per epoch.
             """,
-        default=5,
+        default=3,
         type=int,
     )
     args_parser.add_argument(
@@ -102,18 +102,20 @@ def initialize_hyper_params(args_parser):
     args_parser.add_argument(
         '--epoch-save-frequency',
         default=1,
+        help="""\
+            if params.save_shit is true, this determines how often as modulo(epoch, params.epoch_save_frequency)""",
         type=int,
     )
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="testing_tensorflow_v2_3workers",
+        default="testtestest_new",
         type=str,
     )
     args_parser.add_argument(
         '--img-dir',
         # default="gs://temp/outputs",
-        default="images/bedroom_val",
+        default="images/bedroom_train",
         type=str,
     )
     args_parser.add_argument(
@@ -125,6 +127,14 @@ def initialize_hyper_params(args_parser):
             file. If True, loads the highest epoch found in the
             ckpt folder in the output dir. If False, goes along
             as normal without loading any checkpoint"""
+    )
+    args_parser.add_argument(
+        '--save-shit',
+        # default="gs://temp/outputs",
+        help="""\
+            True or False to save everything - ckpts, examples, etc.""",
+        default=False,
+        type=bool,
     )
     args_parser.add_argument(
         '--save-weights',
@@ -200,6 +210,22 @@ def main(params,
     # Set python level verbosity
     tf.compat.v1.logging.set_verbosity(params.verbosity)
 
+    # multiple cpu shit?
+    # with tf.variable_creator_scope("queue"):
+    #     q = tf.queue.FIFOQueue(capacity=5, dtypes=tf.float32)  # enqueue 5 batches
+    #     # We use the "enqueue" operation so 1 element of the queue is the full batch
+    #     enqueue_op = q.enqueue(x_input_data)
+    #     numberOfThreads = 1
+    #     qr = tf.train.QueueRunner(q, [enqueue_op] * numberOfThreads)
+    #     tf.train.add_queue_runner(qr)
+    #     input = q.dequeue()  # It replaces our input placeholder
+
+    # coordinator for multiple cpus?
+    coord = tf.train.Coordinator()
+
+    q = tf.queue.FIFOQueue(capacity=3, dtypes=tf.float32)
+
+
     # Set C++ Graph Execution level verbosity  ------- dont know what this is
     # os.environ['TF_CPP_MIN_LOG_LEVEL'] = str(tf.logging.__dict__[params.verbosity] / 10)
 
@@ -216,23 +242,26 @@ def main(params,
     print('checkpoint folder: {}'.format(ckpt_dir))
     print('tensorboard logging: {}'.format(tb_log_dir))
 
-    # initialize model_mng and datagenerator
-    train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
-    # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
-    load_ckpt_dir = ckpt_dir if params.load_ckpt else None  # if None - does not search / load any checkpoints (models)
-    with strategy.scope():
-        model_mng = ModelManager(
-            optimizer=params.optimizer,
-            lr=params.learning_rate,
-            alpha=params.alpha,
-            load_ckpt_dir=load_ckpt_dir,
-        )
-
     # Run the experiment
     time_start = datetime.utcnow()
     print("")
     print("Experiment started at {}".format(time_start.strftime("%H:%M:%S")))
     print(".......................................")
+
+    # with tf.compat.v1.variable_scope(tf.compat.v1.get_variable_scope()):
+    #     for i in range(0, 3):  # number of gpus
+    #         with tf.device('/gpu:%d' % i):
+    #             with tf.name_scope('%s_%d' % ('tower_bitch', i)) as scope:
+    # initialize model_mng and datagenerator
+    train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
+    # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
+    load_ckpt_dir = ckpt_dir if params.load_ckpt else None  # if None - does not search / load any checkpoints (models)
+    model_mng = ModelManager(
+        optimizer=params.optimizer,
+        lr=params.learning_rate,
+        alpha=params.alpha,
+        load_ckpt_dir=load_ckpt_dir,
+    )
 
     # # the actual call to run the experiment
     # # mng.run_training_procedure(train_datagen)
@@ -314,7 +343,7 @@ def main(params,
         with strategy.scope():
             model_mng.epoch.assign_add(1)  # note this might be stupid --- can lead to desynchronization ...
         # might consider just setting model_mng.epoch = tensor(epoch) for example.
-        if epoch % params.epoch_save_frequency == 0 and epoch > 0:
+        if epoch % params.epoch_save_frequency == 0 and epoch > 0 and params.save_shit:
             # write to tensorboard
             with tb_logger.as_default():
                 tf.summary.scalar('generator_loss', g_loss.numpy(), step=epoch)
@@ -361,4 +390,8 @@ HYPER_PARAMS = initialize_hyper_params(argument_parser)
 if __name__ == '__main__':
 
     # we run the experiment with a single call
-    main(HYPER_PARAMS)
+    main(
+        HYPER_PARAMS,
+        g_epochs=int(HYPER_PARAMS.num_epochs * 0.18),
+        d_epochs=int(HYPER_PARAMS.num_epochs * 0.02),
+    )

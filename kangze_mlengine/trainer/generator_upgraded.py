@@ -1,8 +1,10 @@
 import numpy as np
-from tensorflow.python.lib.io import file_io
-from PIL import Image
 import cv2
 import random as rng
+import threading
+from keras.preprocessing.image import ImageDataGenerator as ImageGenerator
+from tensorflow.python.lib.io import file_io
+from PIL import Image
 
 from google.cloud import storage
 from google import auth
@@ -80,7 +82,32 @@ def preprocess_img(img, target_size):
     return output_img
 
 
-class DataGenerator(object):
+class threadsafe_iter:
+    """Takes an iterator/generator and makes it thread-safe by
+    serializing call to the `next` method of given iterator/generator.
+    """
+    def __init__(self, it):
+        self.it = it
+        self.lock = threading.Lock()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        with self.lock:
+            return self.it.__next__()
+
+
+def threadsafe_generator(f):
+    """A decorator that takes a generator function and makes it thread-safe.
+    """
+    def g(*a, **kw):
+        return threadsafe_iter(f(*a, **kw))
+    return g
+
+
+class DataGenerator:
+
     def __init__(self,
              params,
              image_size,
@@ -97,11 +124,13 @@ class DataGenerator(object):
         :param local_size: tuple/list (2 elements xy) -
             all images.
         """
+        # super(DataGenerator, ).__init__()
         self.params = params
         self.max_img_cnt = self.params.max_img_cnt
         self.image_size = image_size
         self.local_size = local_size
 
+    @threadsafe_generator
     def flow_from_directory(self, batch_size, hole_min=64, hole_max=128):
         """
         iterates over img_dir indefinitely and does preprocessing. computes random masks on the fly. loops indefinitely

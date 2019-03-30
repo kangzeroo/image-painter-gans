@@ -1,7 +1,7 @@
 #trainingInput:
-#  scaleTier: PREMIUM_1 # BASIC | BASIC_GPU | STANDARD_1 | PREMIUM_1
+#  scaleTier: BASIC_GPU # BASIC | BASIC_GPU | STANDARD_1 | PREMIUM_1
 trainingInput:
   scaleTier: CUSTOM
   masterType: complex_model_l_v100
   workerType: complex_model_l_v100
-  workerCount: 3
+  workerCount: 1
