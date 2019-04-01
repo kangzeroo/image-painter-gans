@@ -32,6 +32,7 @@ def save_model(model, save_path):
     #        that shit rn
 
 
+# @tf.function
 def extract_roi_imgs(images, points):
     roi_imgs = tf.cast(
         [

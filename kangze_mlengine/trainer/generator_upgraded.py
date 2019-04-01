@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 import random as rng
 import threading
-from keras.preprocessing.image import ImageDataGenerator as ImageGenerator
+import tensorflow as tf
 from tensorflow.python.lib.io import file_io
 from PIL import Image
 
@@ -110,6 +110,7 @@ class DataGenerator:
 
     def __init__(self,
              params,
+             # batch_size,
              image_size,
              local_size):
         """
@@ -129,9 +130,10 @@ class DataGenerator:
         self.max_img_cnt = self.params.max_img_cnt
         self.image_size = image_size
         self.local_size = local_size
+        # self.batch_size = batch_size
 
-    @threadsafe_generator
-    def flow_from_directory(self, batch_size, hole_min=64, hole_max=128):
+    # @threadsafe_generator
+    def flow_from_directory(self, hole_min=64, hole_max=128):
         """
         iterates over img_dir indefinitely and does preprocessing. computes random masks on the fly. loops indefinitely
         :param batch_size: INT - the size of the current batch
@@ -156,22 +158,32 @@ class DataGenerator:
 
                     # NOTE the following function randomly crops the image so it has same aspect ratio as image_size, then
                     # it resizes it using cv2 to image_size (this prevents like curved beds etc from warping presumably).
-                    img = preprocess_img(img, target_size=self.image_size)
+                    img = tf.cast(preprocess_img(img, target_size=self.image_size), tf.float32)
 
-                    # to look at imgs use - plt.imshow(img_resized[0, :, :, ])  (plt == matplotlib.pyplot)
-                    images.append(img)
+                    # # to look at imgs use - plt.imshow(img_resized[0, :, :, ])  (plt == matplotlib.pyplot)
+                    # images.append(img)
 
                     # get the mask and the bounding box points
                     m, pts = mask_img(self.image_size, self.local_size, hole_min=hole_min, hole_max=hole_max)
 
-                    # finally append them to the main tings
-                    masks.append(m)
-                    points.append(pts)
+                    m = tf.cast(m, dtype=tf.uint8)
 
-                    # yield the batch of data when batch size reached
-                    if len(images) == batch_size:
-                        # this probably wastes some memory needlessly...
-                        ii, mm, pp = np.asarray(images).copy(), masks.copy(), points.copy()
-                        # probably a better way to do this stupid shit
-                        images, masks, points = [], [], []
-                        yield ii, mm, pp
+                    # these are the images with the patches blacked out (i.e. set to zero) - same size as images
+                    erased_imgs = tf.multiply(img,
+                                              tf.cast(tf.subtract(tf.constant(1, dtype=tf.uint8), m),
+                                                      dtype=tf.float32))
+
+                    # finally append them to the main tings
+                    # masks.append(m)
+                    # points.append(pts)
+
+                    # yield erased_imgs, img, m, tf.cast(pts, dtype=tf.int32)
+                    yield erased_imgs, img, pts
+
+                    # # yield the batch of data when batch size reached
+                    # if len(images) == self.batch_size:
+                    #     # this probably wastes some memory needlessly...
+                    #     ii, mm, pp = tf.cast(images, tf.float32), tf.cast(masks, dtype=tf.uint8), tf.cast(points, dtype=tf.uint8)
+                    #     # probably a better way to do this stupid shit
+                    #     images, masks, points = [], [], []
+                    #     yield ii, mm, pp

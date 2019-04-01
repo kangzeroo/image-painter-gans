@@ -110,7 +110,7 @@ class Generator(Model):
         :param kwargs:
         :return:
         """
-        training = tf.Variable(training)
+        # training = tf.Variable(training)
 
         x = self.conv11(inputs)
         x = self.bn1(x, training=training)
@@ -245,7 +245,6 @@ class DiscConnected(Model):
         :param kwargs:
         :return:
         """
-        training = tf.Variable(training)  # BOOL tensor - need this to be TRUE for the tf.keras.layers.BatchNormalization() to work at all .... seems bugged
 
         # local
         xl = self.lc1(cropped_imgs)
@@ -307,6 +306,7 @@ class ModelManager:
     """
     def __init__(
         self,
+        # strategy,
         optimizer='AdadeltaOptimizer',
         lr=1.0,
         alpha=0.0004,
@@ -328,6 +328,11 @@ class ModelManager:
         self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
         # optimizers ***** NOTE THESE might be different from paper
         # NOTE paper: if using tf.losses.AdadeltaOptimizer use a learning rate of 1.0
+
+        # self.strategy = strategy
+
+        # with self.strategy.scope():
+
         self.gen_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
         self.gen_optimizer.__setattr__('name', 'gen_optimizer')  # necessary for checkpoint???
         self.disc_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
@@ -350,6 +355,7 @@ class ModelManager:
             'disc_connected': self.disc_model,
             'epoch': self.epoch
         }
+
         self.checkpoint = tf.train.Checkpoint(**kwarg)
 
         # now if param use checkpoint is true, load up the checkpoint
@@ -402,7 +408,7 @@ class ModelManager:
             # loss_value = tf.losses.mean_squared_error(labels, predicted)
             loss_value, _ = self._gen_loss(x=imgs, y=labels, training=True)
 
-        self.gen_loss_history.append(loss_value.numpy())  # track the loss in a variable
+        self.gen_loss_history.append(loss_value)  # track the loss in a variable
         grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
         self.gen_optimizer.apply_gradients(zip(grads, self.gen_model.trainable_variables))
         return loss_value
@@ -416,10 +422,11 @@ class ModelManager:
         :return: LOSS - as tensor from discriminator
         """
 
+        # with self.strategy.scope():
         with tf.GradientTape() as tape:
             loss_value = self._disc_loss(imgs, masked_imgs, labels, training=True)
 
-        self.disc_loss_history.append(loss_value.numpy())
+        self.disc_loss_history.append(loss_value)
         grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
         self.disc_optimizer.apply_gradients(
             zip(
@@ -440,6 +447,8 @@ class ModelManager:
         :param valid:
         :return:
         """
+        # with self.strategy.scope():
+
         with tf.GradientTape() as tape_gen:
             # first calculate loss + predictions from generator
             loss_value_gen, output_gen = self._gen_loss(erased_imgs, images, training=True)
