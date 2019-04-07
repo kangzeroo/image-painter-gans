@@ -3,6 +3,7 @@ from tensorflow.keras.layers import Flatten, Activation, Conv2D, Conv2DTranspose
 from tensorflow.keras import Model
 
 
+
 try:
     from utils_upgraded import save_img, extract_roi_imgs, log_scalar
 except Exception as e:
@@ -234,6 +235,9 @@ class DiscConnected(Model):
         self.gf1 = Flatten()
         self.gd1 = Dense(1024, activation='relu')
 
+        # to connect the babes
+        self.d1 = Dense(1, activation='sigmoid')
+
     def call(self, inputs, cropped_imgs, training=True,  *args, **kwargs):
         """
         call this bitch, bitch. NOTE - batch norm needs paraing "training" to be True... otherwise, yields nans
@@ -290,7 +294,7 @@ class DiscConnected(Model):
 
         # now lets put these bitches together
         x = tf.concat([xl, xg], axis=1)
-        x = Dense(1, activation='sigmoid')(x)
+        x = self.d1(x)
         return x
 
 
@@ -324,6 +328,7 @@ class ModelManager:
         :param tb_log_dir: str or None - if not None, logs the losses etc in the directory specified.
         """
         # super(ModelManager, self).__init__()
+        # self.hold_tape, self.hold_loss = None, None  # holds the gradient tape and loss from predicting generator on full brain train.
         self.alpha = alpha
         self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
         # optimizers ***** NOTE THESE might be different from paper
@@ -332,6 +337,11 @@ class ModelManager:
         # self.strategy = strategy
 
         # with self.strategy.scope():
+
+        # lets initialize the loss?????????????
+        self.disc_loss = tf.keras.metrics.Mean(name='disc_loss')
+        self.gen_loss = tf.keras.metrics.Mean(name='gen_loss')
+        self.combined_loss = tf.keras.metrics.Mean(name='combined_loss')
 
         self.gen_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
         self.gen_optimizer.__setattr__('name', 'gen_optimizer')  # necessary for checkpoint???
@@ -378,8 +388,9 @@ class ModelManager:
             inferrence will yield nans (potential bug))) BITCH
         :return: mse loss, predictions
         """
-        output = self.gen_model(x, training=training)
+        output = self.gen_model.call(x, training=training)
         return tf.compat.v1.losses.mean_squared_error(predictions=output, labels=y), output
+        # return tf.keras.losses.mean_squared_error(y_true=y, y_pred=output), output
 
     def _disc_loss(self, x, xx, y, training=True):
         """
@@ -387,15 +398,17 @@ class ModelManager:
         :param x: the global tensor images (in batches)
         :param xx: the local tensor images (batches)
         :param y: the labels (i.e. real or fake BITCH)
-        :param training: BOOL - training or not ?? for batchnorm layers - NOTE bugged when this is true....
+        :param training: BOOL - training or not ?? for batchnorm layers - NOTE bugged when this is false....
             PLEASE SET THIS TO TRUE when inffering .... for somereason fucks up when false..... ???? need to look
             into this
         :return: sigmoid xentropy loss
         """
-        return tf.compat.v1.losses.sigmoid_cross_entropy(logits=self.disc_model(x, xx, training=training),
-                                               multi_class_labels=y)
+        output = self.disc_model.call(x, xx, training=training)
+        # return tf.compat.v1.losses.sigmoid_cross_entropy(logits=output,
+        #                                                  multi_class_labels=y)
+        return tf.keras.losses.binary_crossentropy(y_true=y, y_pred=output)
 
-    def train_gen(self, imgs, labels):
+    def train_gen(self, imgs, labels, training=True):
         """
         trains and returns the loss on the GENERATOR
         :param imgs: tensor - the images with a masked out region
@@ -406,14 +419,15 @@ class ModelManager:
         with tf.GradientTape() as tape:
             # predicted = self.gen_model(imgs, training=True)
             # loss_value = tf.losses.mean_squared_error(labels, predicted)
-            loss_value, _ = self._gen_loss(x=imgs, y=labels, training=True)
+            loss_value, _ = self._gen_loss(x=imgs, y=labels, training=training)
 
-        self.gen_loss_history.append(loss_value)  # track the loss in a variable
+        # self.gen_loss_history.append(loss_value)  # track the loss in a variable
+        self.gen_loss(loss_value)
         grads = tape.gradient(loss_value, self.gen_model.trainable_variables)  # this takes a long time on cpu
         self.gen_optimizer.apply_gradients(zip(grads, self.gen_model.trainable_variables))
         return loss_value
 
-    def train_disc(self, imgs, masked_imgs, labels):
+    def train_disc(self, imgs, roi_imgs, labels, training=True):
         """
         TRAIN THE DISCRIMINATORS (global + local).
         :param imgs: tensor - global output from generator (in batches)
@@ -424,51 +438,93 @@ class ModelManager:
 
         # with self.strategy.scope():
         with tf.GradientTape() as tape:
-            loss_value = self._disc_loss(imgs, masked_imgs, labels, training=True)
+            loss_value = self._disc_loss(imgs, roi_imgs, labels, training=training)
 
         self.disc_loss_history.append(loss_value)
         grads = tape.gradient(loss_value, self.disc_model.trainable_variables)  # this takes a long time on cpu
-        self.disc_optimizer.apply_gradients(
-            zip(
-                grads,
-                self.disc_model.trainable_variables
-            )
-            # global_step=tf.compat.v1.train.get_or_create_global_step()
-        )
+        self.disc_optimizer.apply_gradients(zip(grads, self.disc_model.trainable_variables))
 
         return loss_value
 
-    def train_full_brain(self, erased_imgs, images, points, valid):
+    def predict_generator(self, erased_imgs, images, training=True):
         """
-        trains the generator on the JOINT (??) loss from the generator and the discriminator.
-        :param erased_imgs:
+        Computes generator output and loss. if withtape=True, puts the tape to self for later use (i.e. in
+        train_full_brain, otherwise deletes it)
+        * Note : saving the tape etc is needed for self.train_full_brain to save the tape and loss but output the
+                 generated imgs for cpu processing.
+        :param erased_imgs: images with the inner ROI set to 0
+        :param images:
+        :param withtape: BOOL - true write tape and loss to self, otherwise deletes the tape.
+        :return:
+        """
+        # with tf.GradientTape(persistent=True) as gen_tape:
+        loss_value_gen, output_gen = self._gen_loss(erased_imgs, images, training=training)
+        #
+        # if withtape:
+        #     # we save the tape for later.... (i.e. need it in self.train_brain)
+        #     self.hold_tape = gen_tape
+        #     # self.hold_loss = loss_value_gen
+        #     self.gen_loss(loss_value_gen)
+        # else:
+        #     # delete the tape.
+        #     del gen_tape
+
+        return output_gen
+
+    def train_brain(self, erased_imgs, imgs, roi_imgs, valid, training=True):
+        """
+        trains the discriminator on the JOINT (??) loss from the generator and the discriminator.
+        * NOTE this uses a pre-computed gradient tape in self.hold_tape as well as loss. Both of these are created by
+        self._gen_loss_tape() and this intermediate step is needed to weave cpu into this GPU calculation
+        (i.e. from extract_roi_imgs)
+
         :param images:
         :param roi_imgs:
         :param valid:
         :return:
         """
-        # with self.strategy.scope():
+        # # with self.strategy.scope():
+        # # compute loss with tape on the generator....
+        # with tf.GradientTape() as tape_gen:
+        #     # first calculate loss + predictions from generator
+        #     loss_value_gen, output_gen = self._gen_loss(erased_imgs, images, training=True)
+        #
 
-        with tf.GradientTape() as tape_gen:
-            # first calculate loss + predictions from generator
-            loss_value_gen, output_gen = self._gen_loss(erased_imgs, images, training=True)
-            # we do a nested gradient tape (???) to track the discriminator also.... prevents errors... ?
-            with tf.GradientTape() as tape_disc:
-                # get the roi of the generator output
-                roi_imgs_gen = extract_roi_imgs(output_gen, points)
-                loss_value_disc = self._disc_loss(output_gen, roi_imgs_gen, valid, training=True)
-                # combine the losses with the paramater alpha... (* SHOULD THIS BE HERE? or in weights.. ? )
-                loss = tf.add(loss_value_gen, tf.multiply(loss_value_disc, self.alpha))
+        # with self.hold_tape as cunt:
+        #     # we do a nested gradient tape (???) to track the discriminator also.... prevents errors... ?
+        #     # c_l = self.hold_loss
+        #     with tf.GradientTape() as tape_disc:
+        #         # get the roi of the generator output
+        #         # roi_imgs_gen = extract_roi_imgs(output_gen, points)
+        # with self.hold_tape:
+        #
+        #     with tf.GradientTape():
+        #
+        #         loss_value_disc = self._disc_loss(generated_imgs, roi_imgs, valid, training=training)
+        #
+        #
 
-            # train the generator (note - discriminator has already been trainined! )
-            grads_gen = tape_gen.gradient(loss, self.gen_model.trainable_variables)
-            self.gen_optimizer.apply_gradients(
-                zip(
-                    grads_gen,
-                    self.gen_model.trainable_variables,
-                )
-                # global_step=tf.compat.v1.train.get_or_create_global_step()
+        with tf.GradientTape() as gtape:
+            loss_value_gen, gen_output = self._gen_loss(y=imgs, x=erased_imgs, training=True)
+
+            with tf.GradientTape():
+                # OMG the roi_imgs are generated from generator (previously made)
+                loss_value_disc = self._disc_loss(gen_output, roi_imgs, valid, training=training)
+                combined_loss = loss_value_gen + (self.alpha * loss_value_disc)
+
+
+        # combine the losses with the paramater alpha... (* SHOULD THIS BE HERE? or in weights.. ? )
+        # loss = tf.add(self.hold_loss, tf.multiply(loss_value_disc, self.alpha))
+        self.disc_loss(loss_value_disc)
+        # combined_loss = tf.add(self.gen_loss.result(), tf.multiply(loss_value_disc, self.alpha))
+
+        self.combined_loss(combined_loss)
+        grads_gen = gtape.gradient(combined_loss, self.gen_model.trainable_variables)
+        self.gen_optimizer.apply_gradients(
+            zip(
+                grads_gen,
+                self.gen_model.trainable_variables,
             )
-
-        self.brain_history.append(loss)
-        return loss, loss_value_gen
+            # global_step=tf.compat.v1.train.get_or_create_global_step()
+        )
+        return combined_loss, loss_value_gen  # doing anything except for self.hold_loss works..... i.e. loss_value_disc.

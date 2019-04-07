@@ -36,9 +36,10 @@ $ gcloud ml-engine jobs submit training $JOB_NAME \
                                     --module-name trainer.task_upgraded \
                                     --package-path trainer \
                                     --python-version 3.5 \
-                                    --runtime-version 1.4 \
+                                    --runtime-version 1.5 \
                                     --region us-central1 \
                                     --staging-bucket $PACKAGE_STAGING_PATH \
+                                    --config config.yaml \
                                     -- \
 
 ```

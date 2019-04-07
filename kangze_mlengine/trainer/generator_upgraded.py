@@ -166,10 +166,12 @@ class DataGenerator:
                     # get the mask and the bounding box points
                     m, pts = mask_img(self.image_size, self.local_size, hole_min=hole_min, hole_max=hole_max)
 
-                    m = tf.cast(m, dtype=tf.uint8)
+                    m, pts = tf.cast(m, dtype=tf.uint8), tf.cast(pts, dtype=tf.uint8)
 
                     # these are the images with the patches blacked out (i.e. set to zero) - same size as images
-                    erased_imgs = tf.multiply(img,
+                    # WARNING HAPPENS HERE!!!
+                    # print('this seems fucked (tf.multiply) in generator')
+                    erased_img = tf.multiply(img,
                                               tf.cast(tf.subtract(tf.constant(1, dtype=tf.uint8), m),
                                                       dtype=tf.float32))
 
@@ -178,7 +180,7 @@ class DataGenerator:
                     # points.append(pts)
 
                     # yield erased_imgs, img, m, tf.cast(pts, dtype=tf.int32)
-                    yield erased_imgs, img, pts
+                    yield erased_img, img, pts
 
                     # # yield the batch of data when batch size reached
                     # if len(images) == self.batch_size:

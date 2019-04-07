@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 REQUIRED_PACKAGES = ['Keras==2.2.4',
                      'h5py==2.9.0',
-                     'tensorflow==2.0.0a0',
+                     'tensorflow-gpu==2.0.0a0',
                      'numpy==1.16.2',
                      'Pillow==2.2.1',
                      'opencv-python==4.0.0.21',

@@ -32,7 +32,6 @@ def save_model(model, save_path):
     #        that shit rn
 
 
-# @tf.function
 def extract_roi_imgs(images, points):
     roi_imgs = tf.cast(
         [
@@ -43,7 +42,7 @@ def extract_roi_imgs(images, points):
                 target_height=b[3] - b[1],
                 target_width=b[2] - b[0]
             )
-            for a, b in zip(images, points)
+            for a, b in zip(images, points.numpy())
         ],
         tf.float32
     )
