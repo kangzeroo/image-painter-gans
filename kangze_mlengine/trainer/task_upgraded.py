@@ -279,7 +279,7 @@ def main(params,
         # do so within the scope of mirrored_strategy -- NOTE right now, the train_datagen itself has its threadsafe turned to false....
         ds = tf.data.Dataset.from_generator(
             train_datagen.flow_from_directory,
-            (tf.float32, tf.float32, tf.uint8),
+            (tf.float32, tf.float32, tf.int64),
             # output_shapes=(tf.TensorShape([params.train_batch_size, ] + list(global_shape)),
             #                tf.TensorShape([params.train_batch_size, ] + list(global_shape[:-1]) + [1, ]),
             #                tf.TensorShape([params.train_batch_size, 4])))
