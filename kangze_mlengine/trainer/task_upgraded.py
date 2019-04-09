@@ -262,8 +262,7 @@ def main(params,
     # # the actual call to run the experiment
     # # mng.run_training_procedure(train_datagen)
     # run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, ckpt_dir=ckpt_dir, tb_log_dir=tb_log_dir)
-    tb_logger = tf.summary.create_file_writer(tb_log_dir)
-    # tb_logger = tf.compat.v2.summary.create_file_writer(tb_log_dir)
+    # tb_logger = tf.summary.create_file_writer(tb_log_dir)
 
     # train baby bitch
     if g_epochs != int(params.num_epochs * 0.18) or int(params.num_epochs * 0.02):
@@ -515,10 +514,10 @@ def main(params,
             # # might consider just setting model_mng.epoch = tensor(epoch) for example.
             if epoch % params.epoch_save_frequency == 0 and epoch > 0 and params.save_shit:
                 # write to tensorboard
-                with tb_logger.as_default():
-                    tf.summary.scalar('generator_loss', gl, step=epoch)
-                    tf.summary.scalar('discriminator_loss', dl, step=epoch)
-                    tf.summary.scalar('combined_loss', cl, step=epoch)
+                # with tb_logger.as_default():
+                #     tf.summary.scalar('generator_loss', gl, step=epoch)
+                #     tf.summary.scalar('discriminator_loss', dl, step=epoch)
+                #     tf.summary.scalar('combined_loss', cl, step=epoch)
 
                 # save check_point - THESE GET PICKED UP IF SPECIFIED
                 print('\nsaving checkpoint {}\n'.format(ckpt_dir))
