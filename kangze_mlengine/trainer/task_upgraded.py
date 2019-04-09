@@ -313,7 +313,7 @@ def main(params,
             # train generator
             g_loss = model_mng.train_gen(erased_imgs, images)
 
-            return tf.reduce_mean(g_loss)
+            return g_loss
 
         def predict_generator(inputs):
 
@@ -365,7 +365,15 @@ def main(params,
 
         @tf.function
         def distributed_train_generator():
-            return mirrored_strategy.experimental_run(train_generator, input_iterator)
+
+            per_replica_gen_losses = mirrored_strategy.experimental_run(
+                train_generator, input_iterator)
+
+            mean_loss = mirrored_strategy.reduce(
+                tf.distribute.ReduceOp.MEAN, per_replica_gen_losses)
+
+
+            return mean_loss
 
         @tf.function
         def distributed_predict_generator():
