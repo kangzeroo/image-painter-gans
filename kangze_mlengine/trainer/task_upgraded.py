@@ -313,7 +313,7 @@ def main(params,
             # train generator
             g_loss = model_mng.train_gen(erased_imgs, images)
 
-            return g_loss
+            return tf.reduce_mean(g_loss)
 
         def predict_generator(inputs):
 
