@@ -46,14 +46,14 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=50  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--steps-per-epoch',
         help="""\
             Number of steps per epoch.
             """,
-        default=2,
+        default=5,
         type=int,
     )
     args_parser.add_argument(
@@ -262,7 +262,8 @@ def main(params,
     # # the actual call to run the experiment
     # # mng.run_training_procedure(train_datagen)
     # run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, ckpt_dir=ckpt_dir, tb_log_dir=tb_log_dir)
-    tb_logger = tf.summary.create_file_writer(tb_log_dir)
+    # tb_logger = tf.summary.create_file_writer(tb_log_dir)
+    tb_logger = tf.compat.v2.summary.create_file_writer(tb_log_dir)
 
     # train baby bitch
     if g_epochs != int(params.num_epochs * 0.18) or int(params.num_epochs * 0.02):
@@ -562,6 +563,6 @@ if __name__ == '__main__':
         HYPER_PARAMS,
         # g_epochs=int(HYPER_PARAMS.num_epochs * 0.18),
         # d_epochs=int(HYPER_PARAMS.num_epochs * 0.02),
-        g_epochs=2,
-        d_epochs=2
+        g_epochs=6,
+        d_epochs=6
     )
