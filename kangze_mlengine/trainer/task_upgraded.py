@@ -46,7 +46,7 @@ def initialize_hyper_params(args_parser):
         '--train-batch-size',
         help='Batch size for each training step',
         type=int,
-        default=20  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
+        default=2  # currently 25 throws memory errors...... NEED TO INCREASE THIS BABY (use 20 for now)
     )
     args_parser.add_argument(
         '--steps-per-epoch',
@@ -390,9 +390,9 @@ def main(params,
             progbar = generic_utils.Progbar(prog_cap)
             print('\nstarting epoch {}\n'.format(epoch))
 
-            g_loss = tf.Variable(0)
-            d_loss = tf.Variable(0)
-            combined_loss = tf.Variable(0)
+            g_loss = tf.Variable(0, dtype=tf.int64)
+            d_loss = tf.Variable(0, dtype=tf.int64)
+            combined_loss = tf.Variable(0, dtype=tf.int64)
 
             for step_cnt in range(0, params.steps_per_epoch):
 
