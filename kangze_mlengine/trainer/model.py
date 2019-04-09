@@ -1,5 +1,4 @@
 import tensorflow as tf
-import tensorflow.contrib.eager as tfe
 from tensorflow.keras.layers import Flatten, Activation, Conv2D, Conv2DTranspose, Dense, BatchNormalization
 from tensorflow.keras import Model
 
@@ -111,7 +110,7 @@ class Generator(Model):
         :param kwargs:
         :return:
         """
-        training = tfe.Variable(training)
+        training = tf.Variable(training)
 
         x = self.conv11(inputs)
         x = self.bn1(x, training=training)
@@ -246,7 +245,7 @@ class DiscConnected(Model):
         :param kwargs:
         :return:
         """
-        training = tfe.Variable(training)  # BOOL tensor - need this to be TRUE for the tf.keras.layers.BatchNormalization() to work at all .... seems bugged
+        training = tf.Variable(training)  # BOOL tensor - need this to be TRUE for the tf.keras.layers.BatchNormalization() to work at all .... seems bugged
 
         # local
         xl = self.lc1(cropped_imgs)
@@ -330,9 +329,9 @@ class ModelManager:
         self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
         # optimizers ***** NOTE THESE might be different from paper
         # NOTE paper: if using tf.losses.AdadeltaOptimizer use a learning rate of 1.0
-        self.gen_optimizer = getattr(tf.train, optimizer)(learning_rate=lr)
+        self.gen_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
         self.gen_optimizer.__setattr__('name', 'gen_optimizer')  # necessary for checkpoint???
-        self.disc_optimizer = getattr(tf.train, optimizer)(learning_rate=lr)
+        self.disc_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
         self.disc_optimizer.__setattr__('name', 'disc_optimizer')
         # this is the generator model
         self.gen_model = Generator()  # need to checkpoint this... NOTE --- it's name is "generator_model"
@@ -340,10 +339,11 @@ class ModelManager:
         self.disc_model = DiscConnected()  # need to checkpoint this... NOTE --- its name is disc_connected
 
         # keep track of epoch ----- overides in task.py run_job()
-        self.epoch = tfe.Variable(0, name='epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
+        self.epoch = tf.Variable(0, name='epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
 
         # first sort out tensorboard logging
-        self.tb_logger = tf.contrib.summary.create_file_writer(tb_log_dir)
+        # self.tb_logger = tf.summary.create_file_writer(tb_log_dir)
+        self.tb_logger = tf.summary.create_file_writer(tb_log_dir)
         self.tb_logger.set_as_default()
 
 
@@ -380,7 +380,9 @@ class ModelManager:
         :return: mse loss, predictions
         """
         output = self.gen_model(x, training=training)
-        return tf.losses.mean_squared_error(predictions=output, labels=y), output
+        mse = tf.keras.losses.MeanSquaredError()
+        # return tf.losses.mean_squared_error(predictions=output, labels=y), output
+        return mse(output, y)
 
     def _disc_loss(self, x, xx, y, training=True):
         """

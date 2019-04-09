@@ -108,13 +108,13 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--epoch-save-frequency',
-        default=1,
+        default=10,
         type=int,
     )
     args_parser.add_argument(
         '--job-dir',
         # default="gs://temp/outputs",
-        default="testing",
+        default="testing_baby_newnewnew",
         type=str,
     )
     args_parser.add_argument(
@@ -125,7 +125,7 @@ def initialize_hyper_params(args_parser):
     )
     args_parser.add_argument(
         '--load-ckpt',
-        default=True,
+        default=False,
         type=bool,
         help="""\
             True or False specifying if to load the checkpoint
@@ -180,7 +180,7 @@ def initialize_hyper_params(args_parser):
     return args_parser.parse_args()
 
 
-def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=1, d_epochs=1):
+def run_job(params, model_mng, data_gen, base_save_dir, strategy, ckpt_dir=None, g_epochs=1, d_epochs=1):
     """
     run the job ... paramaters are assumed to have been preloaded upon initialization in model_mng.
 
@@ -240,24 +240,25 @@ def run_job(params, model_mng, data_gen, base_save_dir, ckpt_dir=None, g_epochs=
 
             # we must train the neural nets seperately, and then together
             # train generator for 90k epochs
-            if epoch < g_epochs:
-                # train generator
-                g_loss = model_mng.train_gen(erased_imgs, images)
+            with strategy.scope():
+                if epoch < g_epochs:
+                    # train generator
+                    g_loss = model_mng.train_gen(erased_imgs, images)
 
-            # train discriminator alone for 90k epochs
-            # then train disc + gen for another 400k epochs. Total of 500k
-            else:
-                roi_imgs_real, roi_imgs_fake = extract_roi_imgs(images, points), extract_roi_imgs(erased_imgs, points)
-                # train the discriminator
-                d_loss_real = model_mng.train_disc(images, roi_imgs_real, valid)
-                d_loss_fake = model_mng.train_disc(generated_imgs, roi_imgs_fake, fake)
+                # train discriminator alone for 90k epochs
+                # then train disc + gen for another 400k epochs. Total of 500k
+                else:
+                    roi_imgs_real, roi_imgs_fake = extract_roi_imgs(images, points), extract_roi_imgs(erased_imgs, points)
+                    # train the discriminator
+                    d_loss_real = model_mng.train_disc(images, roi_imgs_real, valid)
+                    d_loss_fake = model_mng.train_disc(generated_imgs, roi_imgs_fake, fake)
 
-                # # combine and set the disc loss
-                d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
-                log_scalar('discriminator_loss', d_loss)
-                if epoch >= g_epochs + d_epochs:
-                    # train the entire brain (note this only updates the generator - but uses joint loss gen + disc)
-                    combined_loss, g_loss = model_mng.train_full_brain(erased_imgs, images, points, fake)
+                    # # combine and set the disc loss
+                    d_loss = tf.multiply(tf.add(d_loss_real, d_loss_fake), 0.5)
+                    log_scalar('discriminator_loss', d_loss)
+                    if epoch >= g_epochs + d_epochs:
+                        # train the entire brain (note this only updates the generator - but uses joint loss gen + disc)
+                        combined_loss, g_loss = model_mng.train_full_brain(erased_imgs, images, points, fake)
 
             # progress bar visualization (comment out in ML Engine)
             progbar.add(int(images.shape[0]), values=[("Disc Loss: ", d_loss.numpy()), ("Gen Loss: ", g_loss.numpy()),
@@ -328,13 +329,17 @@ def main(params,
     train_datagen = DataGenerator(params, image_size=global_shape[:-1], local_size=local_shape[:-1])
     # next lets initialize our ModelManager (i.e. the thing that holds the GAN)
     load_ckpt_dir = ckpt_dir if params.load_ckpt else None  # if None - does not search / load any checkpoints (models)
-    mng = ModelManager(
-        optimizer=params.optimizer,
-        lr=params.learning_rate,
-        alpha=params.alpha,
-        load_ckpt_dir=load_ckpt_dir,
-        tb_log_dir=tb_log_dir
-    )
+
+    strategy = tf.distribute.MirroredStrategy()
+    with strategy.scrope():
+        mng = ModelManager(
+            optimizer=params.optimizer,
+            lr=params.learning_rate,
+            alpha=params.alpha,
+            load_ckpt_dir=load_ckpt_dir,
+            tb_log_dir=tb_log_dir
+        )
+
 
     # Run the experiment
     time_start = datetime.utcnow()
@@ -344,7 +349,7 @@ def main(params,
 
     # the actual call to run the experiment
     # mng.run_training_procedure(train_datagen)
-    run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, ckpt_dir=ckpt_dir)
+    run_job(params=params, model_mng=mng, data_gen=train_datagen, base_save_dir=base_save_dir, strategy=strategy, ckpt_dir=ckpt_dir)
 
     time_end = datetime.utcnow()
     print(".......................................")

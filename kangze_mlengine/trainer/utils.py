@@ -98,5 +98,6 @@ def log_scalar(name, val, logging_frequency=1):
     :param val: value of paramater (scalar i.e. loss)
     :return:
     """
-    with tf.contrib.summary.record_summaries_every_n_global_steps(logging_frequency):
-        tf.contrib.summary.scalar(name, val)
+    with tf.summary.record_summaries_every_n_global_steps(logging_frequency):
+        tf.summary.scalar(name, val)
+
