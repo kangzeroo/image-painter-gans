@@ -201,7 +201,8 @@ def main(params,
     # multi gpu
     # strategy = tf.distribute.MirroredStrategy(devices=["/device:GPU:0", "/device:GPU:1", "/device:GPU:2"])
     # strategy = tf.compat.v1.distribute.MirroredStrategy(num_gpus=3)
-
+    tf.config.set_soft_device_placement(True)
+    tf.debugging.set_log_device_placement(True)
     # tf.contrib.distribute.MirroredStrategy(num_gpus=2)
     mirrored_strategy = tf.distribute.MirroredStrategy()
     print('found {} machines'.format(mirrored_strategy.num_replicas_in_sync))
@@ -279,7 +280,7 @@ def main(params,
         # do so within the scope of mirrored_strategy -- NOTE right now, the train_datagen itself has its threadsafe turned to false....
         ds = tf.data.Dataset.from_generator(
             train_datagen.flow_from_directory,
-            (tf.float32, tf.float32, tf.int64),
+            (tf.float32, tf.float32, tf.uint8),
             # output_shapes=(tf.TensorShape([params.train_batch_size, ] + list(global_shape)),
             #                tf.TensorShape([params.train_batch_size, ] + list(global_shape[:-1]) + [1, ]),
             #                tf.TensorShape([params.train_batch_size, 4])))

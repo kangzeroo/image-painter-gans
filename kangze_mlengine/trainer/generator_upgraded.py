@@ -166,7 +166,7 @@ class DataGenerator:
                     # get the mask and the bounding box points
                     m, pts = mask_img(self.image_size, self.local_size, hole_min=hole_min, hole_max=hole_max)
 
-                    m, pts = tf.cast(m, dtype=tf.uint8), tf.cast(pts, dtype=tf.int64)
+                    m, pts = tf.cast(m, dtype=tf.uint8), tf.cast(pts, dtype=tf.uint8)
 
                     # these are the images with the patches blacked out (i.e. set to zero) - same size as images
                     # WARNING HAPPENS HERE!!!
