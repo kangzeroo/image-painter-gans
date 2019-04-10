@@ -10,6 +10,10 @@ except Exception as e:
     from trainer.utils_upgraded import save_img, extract_roi_imgs, log_scalar
 
 
+bt = ["\033[1;34;48m", "\033[0m"]  # call like: print(f'{blue_text[0]}YOUR TEXT HERE{blue_text[1]}') to print in blue ... rt = ["\033[1;31;48m", "\033[0m"]
+rt = ["\033[1;31;48m", "\033[0m"]
+
+
 class Generator(Model):
     def __init__(self):
         super(Generator, self).__init__()
@@ -315,6 +319,7 @@ class ModelManager:
         lr=1.0,
         alpha=0.0004,
         load_ckpt_dir=None,
+        verbosity=None,
     ):
         """
         manage the gan. we construct the discriminator and generator on initialization....... Note, these are not "compiled"
@@ -330,6 +335,7 @@ class ModelManager:
         # super(ModelManager, self).__init__()
         # self.hold_tape, self.hold_loss = None, None  # holds the gradient tape and loss from predicting generator on full brain train.
         self.alpha = alpha
+        self.verbosity = verbosity
         self.gen_loss_history, self.disc_loss_history, self.brain_history = [], [], []
         # optimizers ***** NOTE THESE might be different from paper
         # NOTE paper: if using tf.losses.AdadeltaOptimizer use a learning rate of 1.0
@@ -348,17 +354,24 @@ class ModelManager:
         self.disc_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
         self.disc_optimizer.__setattr__('name', 'disc_optimizer')
         # this is the generator model
+        if verbosity=='DEBUG':
+            print(f'{bt[0]}creating NN generator{bt[1]}')
         self.gen_model = Generator()  # need to checkpoint this... NOTE --- it's name is "generator_model"
+        if verbosity=='DEBUG':
+            print(f'{bt[0]}done creating NN gen{bt[1]}')
         # full discriminator (i.e. global + local branch)
+        if verbosity=='DEBUG':
+            print(f'{bt[0]}creating NN disc{bt[1]}')
         self.disc_model = DiscConnected()  # need to checkpoint this... NOTE --- its name is disc_connected
-
+        if verbosity=='DEBUG':
+            print(f'{bt[0]}done creating NN disc{bt[1]}')
         # keep track of epoch ----- overides in task.py run_job()
         self.epoch = tf.Variable(0, name='epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
 
         # then checkpointing
         # we will create keyword args to throw into the checkpoint using the names of the self variables above
         # the keys are the names above and the values are the self.$varname
-        kwarg = {
+        ckpt_kwarg = {
             'gen_optimizer': self.gen_optimizer,
             'disc_optimizer': self.disc_optimizer,
             'generator_model': self.gen_model,
@@ -366,12 +379,14 @@ class ModelManager:
             'epoch': self.epoch
         }
 
-        self.checkpoint = tf.train.Checkpoint(**kwarg)
+        if verbosity=='DEBUG':
+            print(f'{bt[0]}creating checkpoint{bt[1]}')
+        self.checkpoint = tf.train.Checkpoint(**ckpt_kwarg)
 
         # now if param use checkpoint is true, load up the checkpoint
         # in theory, this will alter all of the state variables defined above!
         if load_ckpt_dir is not None:
-            print('RESTORING FROM CHECKPOINT from {}'.format(load_ckpt_dir))
+            print(f'{bt[0]}RESTORING FROM CHECKPOINT from {load_ckpt_dir}{bt[0]}')
             self.checkpoint.restore(tf.train.latest_checkpoint(load_ckpt_dir))
             print('sanity check - loaded epoch ... {}'.format(self.epoch))
 
