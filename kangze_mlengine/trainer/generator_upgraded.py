@@ -137,6 +137,7 @@ class DataGenerator:
         self.max_img_cnt = self.params.max_img_cnt
         self.image_size = image_size
         self.local_size = local_size
+        self.verbosity = params.verbosity
         # self.batch_size = batch_size
 
     # @threadsafe_generator
@@ -149,7 +150,7 @@ class DataGenerator:
         :return:
         """
         while True:
-            _print(verbosity, 'first FULL LOOP in img generator (i.e. at top of while loop)', ['DEBUG'])
+            _print(self.verbosity, 'first FULL LOOP in img generator (i.e. at top of while loop)', ['DEBUG'])
             images, masks, points = [], [], []
             # for now we get max self.count photos and add them to self.img_file_list
             for img_cnt, blob in enumerate(bucket.list_blobs(prefix=self.params.img_dir)):
@@ -158,10 +159,10 @@ class DataGenerator:
                     print('max image count of {} reached... breaking'.format(self.max_img_cnt))
                     break
                 img_url = blob.name
-                _print(verbosity, 'reading data with fileIO', ['DEBUG'])
+                _print(self.verbosity, 'reading data with fileIO', ['DEBUG'])
                 with file_io.FileIO('gs://{}/{}'.format(self.params.bucketname, img_url), 'rb') as f:
                     # and use PIL to convert into an RGB image
-                    _print(verbosity, 'opening img', ['DEBUG'])
+                    _print(self.verbosity, 'opening img', ['DEBUG'])
                     img = Image.open(f).convert('RGB')
                     # then convert the RGB image to an array so that cv2 can read it
                     img = np.asarray(img, dtype="uint8")
@@ -181,7 +182,7 @@ class DataGenerator:
                     # these are the images with the patches blacked out (i.e. set to zero) - same size as images
                     # WARNING HAPPENS HERE!!!
                     # print('this seems fucked (tf.multiply) in generator')
-                    _print(verbosity, 'erasing img', ['DEBUG'])
+                    _print(self.verbosity, 'erasing img', ['DEBUG'])
                     erased_img = tf.multiply(img,
                                               tf.cast(tf.subtract(tf.constant(1, dtype=tf.uint8), m),
                                                       dtype=tf.float32))
@@ -191,7 +192,7 @@ class DataGenerator:
                     # points.append(pts)
 
                     # yield erased_imgs, img, m, tf.cast(pts, dtype=tf.int32)
-                    _print(verbosity, 'yielding img', ['DEBUG'])
+                    _print(self.verbosity, 'yielding img', ['DEBUG'])
                     yield erased_img, img, pts
 
                     # # yield the batch of data when batch size reached
