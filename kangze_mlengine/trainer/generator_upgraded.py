@@ -9,6 +9,13 @@ from PIL import Image
 from google.cloud import storage
 from google import auth
 
+try:
+    from utils_upgraded import _print
+
+except Exception as e:
+    from trainer.utils_upgraded import _print
+
+
 # might want to throw this in a config file
 creds, _ = auth.default()
 client = storage.Client()
@@ -133,7 +140,7 @@ class DataGenerator:
         # self.batch_size = batch_size
 
     # @threadsafe_generator
-    def flow_from_directory(self, hole_min=64, hole_max=128):
+    def flow_from_directory(self, hole_min=64, hole_max=128, verbosity=None):
         """
         iterates over img_dir indefinitely and does preprocessing. computes random masks on the fly. loops indefinitely
         :param batch_size: INT - the size of the current batch
@@ -142,6 +149,7 @@ class DataGenerator:
         :return:
         """
         while True:
+            _print(verbosity, 'first FULL LOOP in img generator (i.e. at top of while loop)', ['DEBUG'])
             images, masks, points = [], [], []
             # for now we get max self.count photos and add them to self.img_file_list
             for img_cnt, blob in enumerate(bucket.list_blobs(prefix=self.params.img_dir)):
@@ -150,8 +158,10 @@ class DataGenerator:
                     print('max image count of {} reached... breaking'.format(self.max_img_cnt))
                     break
                 img_url = blob.name
+                _print(verbosity, 'reading data with fileIO', ['DEBUG'])
                 with file_io.FileIO('gs://{}/{}'.format(self.params.bucketname, img_url), 'rb') as f:
                     # and use PIL to convert into an RGB image
+                    _print(verbosity, 'opening img', ['DEBUG'])
                     img = Image.open(f).convert('RGB')
                     # then convert the RGB image to an array so that cv2 can read it
                     img = np.asarray(img, dtype="uint8")
@@ -171,6 +181,7 @@ class DataGenerator:
                     # these are the images with the patches blacked out (i.e. set to zero) - same size as images
                     # WARNING HAPPENS HERE!!!
                     # print('this seems fucked (tf.multiply) in generator')
+                    _print(verbosity, 'erasing img', ['DEBUG'])
                     erased_img = tf.multiply(img,
                                               tf.cast(tf.subtract(tf.constant(1, dtype=tf.uint8), m),
                                                       dtype=tf.float32))
@@ -180,6 +191,7 @@ class DataGenerator:
                     # points.append(pts)
 
                     # yield erased_imgs, img, m, tf.cast(pts, dtype=tf.int32)
+                    _print(verbosity, 'yielding img', ['DEBUG'])
                     yield erased_img, img, pts
 
                     # # yield the batch of data when batch size reached

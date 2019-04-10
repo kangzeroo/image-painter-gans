@@ -5,13 +5,9 @@ from tensorflow.keras import Model
 
 
 try:
-    from utils_upgraded import save_img, extract_roi_imgs, log_scalar
+    from utils_upgraded import save_img, extract_roi_imgs, log_scalar, _print
 except Exception as e:
-    from trainer.utils_upgraded import save_img, extract_roi_imgs, log_scalar
-
-
-bt = ["\033[1;34;48m", "\033[0m"]  # call like: print(f'{blue_text[0]}YOUR TEXT HERE{blue_text[1]}') to print in blue ... rt = ["\033[1;31;48m", "\033[0m"]
-rt = ["\033[1;31;48m", "\033[0m"]
+    from trainer.utils_upgraded import save_img, extract_roi_imgs, log_scalar, _print
 
 
 class Generator(Model):
@@ -354,17 +350,13 @@ class ModelManager:
         self.disc_optimizer = getattr(tf.optimizers, optimizer)(learning_rate=lr)
         self.disc_optimizer.__setattr__('name', 'disc_optimizer')
         # this is the generator model
-        if verbosity=='DEBUG':
-            print(f'{bt[0]}creating NN generator{bt[1]}')
+        _print(verbosity, "creating NN generator", ["DEBUG"])
         self.gen_model = Generator()  # need to checkpoint this... NOTE --- it's name is "generator_model"
-        if verbosity=='DEBUG':
-            print(f'{bt[0]}done creating NN gen{bt[1]}')
+        _print(verbosity, "done creating NN gen", ["DEBUG"])
         # full discriminator (i.e. global + local branch)
-        if verbosity=='DEBUG':
-            print(f'{bt[0]}creating NN disc{bt[1]}')
+        _print(verbosity, "creating NN disc", ["DEBUG"])
         self.disc_model = DiscConnected()  # need to checkpoint this... NOTE --- its name is disc_connected
-        if verbosity=='DEBUG':
-            print(f'{bt[0]}done creating NN disc{bt[1]}')
+        _print(verbosity, "done creating NN disc", ["DEBUG"])
         # keep track of epoch ----- overides in task.py run_job()
         self.epoch = tf.Variable(0, name='epoch', dtype=tf.int64)  # if loading in the checkpoint, we will set self.epoch with the save epoch value
 
@@ -379,14 +371,13 @@ class ModelManager:
             'epoch': self.epoch
         }
 
-        if verbosity=='DEBUG':
-            print(f'{bt[0]}creating checkpoint{bt[1]}')
+        _print(verbosity, "creating checkpoint", ["DEBUG"])
         self.checkpoint = tf.train.Checkpoint(**ckpt_kwarg)
 
         # now if param use checkpoint is true, load up the checkpoint
         # in theory, this will alter all of the state variables defined above!
         if load_ckpt_dir is not None:
-            print(f'{bt[0]}RESTORING FROM CHECKPOINT from {load_ckpt_dir}{bt[0]}')
+            _print(verbosity, f"RESTORING FROM CHECKPOINT from {load_ckpt_dir}", ["DEBUG"])
             self.checkpoint.restore(tf.train.latest_checkpoint(load_ckpt_dir))
             print('sanity check - loaded epoch ... {}'.format(self.epoch))
 

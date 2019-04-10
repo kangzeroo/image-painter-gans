@@ -16,17 +16,13 @@ from PIL import Image
 try:
     from model_upgraded import ModelManager
     from generator_upgraded import DataGenerator
-    from utils_upgraded import save_img, extract_roi_imgs, save_model, log_scalar
+    from utils_upgraded import save_img, extract_roi_imgs, save_model, log_scalar, _print
 
 except Exception as e:
     # # cloud - multi
     from trainer.model_upgraded import ModelManager
     from trainer.generator_upgraded import DataGenerator
-    from trainer.utils_upgraded import save_img, extract_roi_imgs, save_model, log_scalar
-
-
-bt = ["\033[1;34;48m", "\033[0m"]  # call like: print(f'{blue_text[0]}YOUR TEXT HERE{blue_text[1]}') to print in blue ... rt = ["\033[1;31;48m", "\033[0m"]
-rt = ["\033[1;31;48m", "\033[0m"]
+    from trainer.utils_upgraded import save_img, extract_roi_imgs, save_model, log_scalar, _print
 
 
 def initialize_hyper_params(args_parser):
@@ -202,6 +198,8 @@ def main(params,
     print('Hyper-parameters:')
     print(params)
 
+    verbosity = params.verbosity
+
     # multi gpu
     # strategy = tf.distribute.MirroredStrategy(devices=["/device:GPU:0", "/device:GPU:1", "/device:GPU:2"])
     # strategy = tf.compat.v1.distribute.MirroredStrategy(num_gpus=3)
@@ -278,18 +276,13 @@ def main(params,
 
     generated_imgs = None  # redundant... but to stop warning in IDE
     # init_epoch = model_mng.epoch.numpy()
-    if params.verbosity:
-        print(f'{bt[0]}first mirrored strategy scope{bt[1]}')
-
+    _print(verbosity, f"first mirrored strategy scope", ["DEBUG"])
     with mirrored_strategy.scope():
-        if params.verbosity:
-            print(f'{bt[0]}inside mirrored strategy scope{bt[1]}')
-
+        _print(verbosity, f"inside mirrored strategy scope", ["DEBUG"])
 
         # we need to create the iterator / generator using tensorflows Dataset - this enable multi-gpus etc
         # do so within the scope of mirrored_strategy -- NOTE right now, the train_datagen itself has its threadsafe turned to false....
-        if params.verbosity:
-            print(f'{bt[0]}setting up dataset{bt[1]}')
+        _print(verbosity, f"setting up dataset", ["DEBUG"])
 
         ds = tf.data.Dataset.from_generator(
             train_datagen.flow_from_directory,
@@ -304,16 +297,14 @@ def main(params,
 
         ds = ds.batch(params.train_batch_size)
         ds = ds.prefetch(params.train_batch_size)
-        if params.verbosity:
-            print(f'{bt[0]}setting up iterator{bt[1]}')
+        _print(verbosity, f"setting up iterator", ["DEBUG"])
         input_iterator = mirrored_strategy.make_dataset_iterator(ds)
         # get output from data generator like:
         # z, zz, zzz = input_iterator.get_next() for example.
 
         # create models etc inside the strategy's scope. This ensures that any variables created with the model
         # and optimizer are mirrored variables.
-        if params.verbosity:
-            print(f'{bt[0]}initializing model{bt[1]}')
+        _print(verbosity, f"initializing model", ["DEBUG"])
         model_mng = ModelManager(
             # strategy=mirrored_strategy,
             optimizer=params.optimizer,
@@ -325,8 +316,7 @@ def main(params,
 
         def train_generator(inputs):
             # for each step, we get the data from the generator
-            if params.verbosity:
-                print(f'{bt[0]}training generator{bt[1]}')
+            _print(verbosity, f"training generator", ["DEBUG"])
 
             erased_imgs, images, _ = inputs
 
@@ -336,9 +326,7 @@ def main(params,
             return g_loss
 
         def predict_generator(inputs):
-
-            if params.verbosity:
-                print(f'{bt[0]}predicting generator{bt[1]}')
+            _print(verbosity, f"predicting generator", ["DEBUG"])
 
             erased_imgs, images, points = inputs
 
@@ -350,9 +338,7 @@ def main(params,
 
         def train_discriminator(inputs):
 
-            if params.verbosity:
-                print(f'{bt[0]}training discriminator{bt[1]}')
-
+            _print(verbosity, f"training discriminator", ["DEBUG"])
             # erased_imgs, images, points = inputs
 
             imgs, roi_imgs, labels = inputs
@@ -372,9 +358,7 @@ def main(params,
         def train_brain(inputs):
 
             # erased_imgs, images, points = inputs
-
-            if params.verbosity:
-                print(f'{bt[0]}training brain{bt[1]}')
+            _print(verbosity, f"training brain", ["DEBUG"])
 
             generated_imgs, imgs, roi_imgs, labels = inputs
 
@@ -395,8 +379,7 @@ def main(params,
         @tf.function
         def distributed_train_generator():
 
-            if params.verbosity:
-                print(f'{bt[0]}preparing distributed train generator... in tf.function{bt[1]}')
+            _print(verbosity, f"preparing distributed train generator... in tf.function", ["DEBUG"])
 
             per_replica_gen_losses = mirrored_strategy.experimental_run(
                 train_generator, input_iterator)
@@ -410,29 +393,23 @@ def main(params,
         @tf.function
         def distributed_predict_generator():
 
-            if params.verbosity:
-                print(f'{bt[0]}preparing distributed predict generator ... in tf.function {bt[1]}')
-
+            _print(verbosity, f"preparing distributed predict generator... in tf.function", ["DEBUG"])
             return mirrored_strategy.experimental_run(predict_generator, input_iterator)  # FOR SOME REASON PREDICTING WITH TRAINING=FALSE GIVES NANS
 
         @tf.function
         def distributed_train_discriminator(discriminator_input):
-            if params.verbosity:
-                print(f'{bt[0]}preparing distributed train discriminator{bt[1]}')
+            _print(verbosity, f"preparing distributed train discriminator... in tf.function", ["DEBUG"])
             return mirrored_strategy.experimental_run(train_discriminator, discriminator_input)
 
         @tf.function
         def distributed_train_brain(final_brain_iterator):
-            if params.verbosity:
-                print(f'{bt[0]}preparing distributed train brain{bt[1]}')
+            _print(verbosity, f"preparing distributed train brain... in tf.function", ["DEBUG"])
             return mirrored_strategy.experimental_run(train_brain, final_brain_iterator)
 
         # @tf.function
         # def distributed_train_brain_init(init_brain_iterator):
         #     return mirrored_strategy.experimental_run(train_brain_init, init_brain_iterator)
-
-        if params.verbosity:
-            print(f'{bt[0]}initializing first input iterator{bt[1]}')
+        _print(verbosity, f"initializing first input iterator", ["DEBUG"])
 
         input_iterator.initialize()
 
@@ -450,9 +427,7 @@ def main(params,
 
                 if epoch < g_epochs:
 
-                    if params.verbosity:
-                        print(f'{bt[0]}calling distributed train gen...{bt[1]}')
-
+                    _print(verbosity, f"calling distributed train gen...", ["DEBUG"])
                     g_loss = distributed_train_generator()
 
                 else:

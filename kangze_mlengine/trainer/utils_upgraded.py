@@ -3,6 +3,31 @@ from tensorflow.python.lib.io import file_io
 from keras.utils import plot_model
 
 
+def _print(verbosity, msg, output_type=None):
+    """
+    prints out statements depending on verbosity with certain colors...
+    :param verbosity: STRING - one of the params from arg parser
+    :param msg: output msg
+    :param output_type: tuple or list - list of strings one of matching verbosity if required to print NONE outputs nothing
+    :return:
+    """
+
+    # bt = ["\033[1;34;48m", "\033[0m"]  # call like: print(f'{blue_text[0]}YOUR TEXT HERE{blue_text[1]}') to print in blue ... rt = ["\033[1;31;48m", "\033[0m"]
+    # rt = ["\033[1;31;48m", "\033[0m"]
+    if verbosity == 'DEBUG':
+        # blue
+        c = ["\033[1;34;48m", "\033[0m"]
+    elif verbosity in {'FATAL', 'ERROR'}:
+        # red
+        c = ["\033[1;31;48m", "\033[0m"]
+    else:
+        c = ["__", "__"]  # not sure what black is off top of my head lol
+
+    if output_type is not None and verbosity in output_type:
+        # only print when asked... ?
+        print(f"{c[0]}{verbosity} : {msg}{c[1]}")
+
+
 def save_model(model, save_path):
     """
     saves the models weights and architecture.
