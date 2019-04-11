@@ -203,7 +203,7 @@ def main(params,
     # multi gpu
     # strategy = tf.distribute.MirroredStrategy(devices=["/device:GPU:0", "/device:GPU:1", "/device:GPU:2"])
     # strategy = tf.compat.v1.distribute.MirroredStrategy(num_gpus=3)
-    tf.config.set_soft_device_placement(True)
+    # tf.config.set_soft_device_placement(True)
     tf.debugging.set_log_device_placement(True)
     # tf.contrib.distribute.MirroredStrategy(num_gpus=2)
     mirrored_strategy = tf.distribute.MirroredStrategy()
@@ -277,12 +277,33 @@ def main(params,
     generated_imgs = None  # redundant... but to stop warning in IDE
     # init_epoch = model_mng.epoch.numpy()
     _print(verbosity, f"first mirrored strategy scope", ["DEBUG"])
+    all_image_paths = f'gs://{params.bucketname}/'
     with mirrored_strategy.scope():
         _print(verbosity, f"inside mirrored strategy scope", ["DEBUG"])
 
         # we need to create the iterator / generator using tensorflows Dataset - this enable multi-gpus etc
         # do so within the scope of mirrored_strategy -- NOTE right now, the train_datagen itself has its threadsafe turned to false....
         _print(verbosity, f"setting up dataset", ["DEBUG"])
+
+        # some things i tried
+        # ds = tf.data.Dataset.list_files('gs://lsun-roomsets/images/bedroom_test/*')  # hangs... probably a permission error?
+
+        # NOTE - might need to create a HUGE tfrecord file (i.e. https://www.tensorflow.org/alpha/tutorials/load_data/images#tfrecord_file -> performance tfrecord)
+        #
+        # preprocess all data into a tfrecord file (https://www.tensorflow.org/alpha/tutorials/load_data/tf_records#tfrecords_format_details)
+        # and then make dataset from that?
+        # then make the ds from https://www.tensorflow.org/api_docs/python/tf/data/TFRecordDataset
+
+        # note: rn data on gcs is octet-stream... what is that and how to use?
+
+        # look here on some decent (but old) info on tfrecords: https://medium.com/ymedialabs-innovation/how-to-use-tfrecord-with-datasets-and-iterators-in-tensorflow-with-code-samples-ffee57d298af
+
+        # maybe helpful somehow ? : https://stackoverflow.com/questions/53416135/tfrecord-type-looks-like-txt-or-image
+
+
+
+        # check out: https://stackoverflow.com/questions/54143127/what-is-the-best-way-to-feed-image-data-tfrecords-from-gcs-to-your-model
+        # check out: https://www.tensorflow.org/alpha/tutorials/load_data/images#build_a_tfdatadataset
 
         ds = tf.data.Dataset.from_generator(
             train_datagen.flow_from_directory,
@@ -299,6 +320,11 @@ def main(params,
         ds = ds.prefetch(params.train_batch_size)
         _print(verbosity, f"setting up iterator", ["DEBUG"])
         input_iterator = mirrored_strategy.make_dataset_iterator(ds)
+
+        # image_ds = tf.data.Dataset.from_tensor_slices(all_image_paths).map(tf.io.read_file)
+
+
+
         # get output from data generator like:
         # z, zz, zzz = input_iterator.get_next() for example.
 
